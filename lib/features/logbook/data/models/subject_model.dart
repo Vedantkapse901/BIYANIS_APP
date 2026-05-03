@@ -54,6 +54,7 @@ class SubjectModel extends HiveObject {
     this.batch,
   });
 
+<<<<<<< HEAD
   factory SubjectModel.fromJson(Map<String, dynamic> json) {
     return SubjectModel(
       id: json['id'],
@@ -86,6 +87,8 @@ class SubjectModel extends HiveObject {
     };
   }
 
+=======
+>>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
   // Convert to Entity
   SubjectEntity toEntity() {
     return SubjectEntity(

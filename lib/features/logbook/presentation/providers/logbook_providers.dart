@@ -1,16 +1,24 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/datasources/local_datasource.dart';
+<<<<<<< HEAD
 import '../../data/datasources/remote_datasource.dart';
+=======
+>>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 import '../../data/repositories/logbook_repository_impl.dart';
 import '../../domain/entities/subject_entity.dart';
 import '../../domain/entities/topic_entity.dart';
 
+<<<<<<< HEAD
 // DataSource Providers
+=======
+// DataSource Provider
+>>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 final localDataSourceProvider = Provider<LocalDataSource>((ref) {
   return LocalDataSource();
 });
 
+<<<<<<< HEAD
 final remoteDataSourceProvider = Provider<RemoteDataSource>((ref) {
   return RemoteDataSource();
 });
@@ -23,6 +31,12 @@ final logbookRepositoryProvider = Provider<LogbookRepository>((ref) {
     localDataSource: localDataSource,
     remoteDataSource: remoteDataSource,
   );
+=======
+// Repository Provider
+final logbookRepositoryProvider = Provider<LogbookRepository>((ref) {
+  final localDataSource = ref.watch(localDataSourceProvider);
+  return LogbookRepositoryImpl(localDataSource: localDataSource);
+>>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 });
 
 // User Role Provider
