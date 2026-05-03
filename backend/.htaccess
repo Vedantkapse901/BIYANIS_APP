@@ -1,0 +1,63 @@
+# Student Logbook API - Apache Configuration
+
+# Enable mod_rewrite
+RewriteEngine On
+
+# Set base path
+RewriteBase /api/v1/
+
+# Prevent access to files and directories that shouldn't be accessed
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Route all requests to index.php
+RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+
+# Remove .php extension from URLs
+# So /auth/login works instead of /auth/login.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^([^\.]+)$ $1.php [QSA,L]
+
+# Hide PHP version
+Header always unset X-Powered-By
+Header always unset X-AspNet-Version
+Header always unset X-AspNetMvc-Version
+
+# Enable CORS
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+    Header set Access-Control-Max-Age "3600"
+</IfModule>
+
+# Set JSON content type
+AddType application/json .json
+
+# Disable directory listing
+Options -Indexes
+
+# Security: Prevent access to sensitive files
+<FilesMatch "^(config\.php|\.env|\.git|composer\.)">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Set proper PHP settings if using shared hosting
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 100M
+    php_value post_max_size 100M
+    php_value memory_limit 256M
+    php_value max_execution_time 300
+    php_value display_errors 0
+    php_value log_errors 1
+</IfModule>
+
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 100M
+    php_value post_max_size 100M
+    php_value memory_limit 256M
+    php_value max_execution_time 300
+    php_value display_errors 0
+    php_value log_errors 1
+</IfModule>
