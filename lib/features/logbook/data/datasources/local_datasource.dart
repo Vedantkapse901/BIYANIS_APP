@@ -15,14 +15,16 @@ class LocalDataSource {
   static const String _subjectsBoxName = 'subjects';
   static const String _topicsBoxName = 'topics';
   static const String _userBoxName = 'user';
-  static const String _usersBoxName = 'all_users';
-  static const String _approvedStudentsBoxName = 'approved_students';
+  static const String _studentsBoxName = 'students'; // Pre-registered students from school
+  static const String _profilesBoxName = 'profiles'; // Student login profiles
+  static const String _usersBoxName = 'all_users'; // Teachers and other users
 
   Box<SubjectModel>? _subjectsBox;
   Box<TopicModel>? _topicsBox;
   Box? _userBox;
+  Box<Map>? _studentsBox;
+  Box<Map>? _profilesBox;
   Box<Map>? _allUsersBox;
-  Box<Map>? _approvedStudentsBox;
 
   bool _isInitialized = false;
 
@@ -53,21 +55,24 @@ class LocalDataSource {
         _subjectsBox = await Hive.openBox<SubjectModel>(_subjectsBoxName);
         _topicsBox = await Hive.openBox<TopicModel>(_topicsBoxName);
         _userBox = await Hive.openBox(_userBoxName);
+        _studentsBox = await Hive.openBox<Map>(_studentsBoxName);
+        _profilesBox = await Hive.openBox<Map>(_profilesBoxName);
         _allUsersBox = await Hive.openBox<Map>(_usersBoxName);
-        _approvedStudentsBox = await Hive.openBox<Map>(_approvedStudentsBoxName);
       } catch (e) {
         debugPrint('LocalDataSource: Error opening boxes, likely data incompatibility. Clearing and retrying... $e');
         await Hive.deleteBoxFromDisk(_subjectsBoxName);
         await Hive.deleteBoxFromDisk(_topicsBoxName);
         await Hive.deleteBoxFromDisk(_userBoxName);
+        await Hive.deleteBoxFromDisk(_studentsBoxName);
+        await Hive.deleteBoxFromDisk(_profilesBoxName);
         await Hive.deleteBoxFromDisk(_usersBoxName);
-        await Hive.deleteBoxFromDisk(_approvedStudentsBoxName);
-        
+
         _subjectsBox = await Hive.openBox<SubjectModel>(_subjectsBoxName);
         _topicsBox = await Hive.openBox<TopicModel>(_topicsBoxName);
         _userBox = await Hive.openBox(_userBoxName);
+        _studentsBox = await Hive.openBox<Map>(_studentsBoxName);
+        _profilesBox = await Hive.openBox<Map>(_profilesBoxName);
         _allUsersBox = await Hive.openBox<Map>(_usersBoxName);
-        _approvedStudentsBox = await Hive.openBox<Map>(_approvedStudentsBoxName);
       }
 
       // Check for data integrity (migration check)
@@ -101,38 +106,55 @@ class LocalDataSource {
     return _allUsersBox!.values.toList();
   }
 
-  // ===== APPROVED STUDENTS OPERATIONS =====
-  Future<void> addApprovedStudent(Map student) async {
+  // ===== STUDENTS OPERATIONS (Pre-registered students from school) =====
+  Future<void> addStudent(Map student) async {
     _ensureInitialized();
-    await _approvedStudentsBox!.put(student['phone'], student);
+    await _studentsBox!.put(student['phone'], student);
   }
 
-  Future<Map?> getApprovedStudent(String phone) async {
+  Future<Map?> getStudent(String phone) async {
     _ensureInitialized();
-    return _approvedStudentsBox!.get(phone);
+    return _studentsBox!.get(phone);
   }
 
   Future<void> markStudentAsRegistered(String phone) async {
     _ensureInitialized();
-    final student = _approvedStudentsBox!.get(phone);
+    final student = _studentsBox!.get(phone);
     if (student != null) {
       final updatedStudent = Map<String, dynamic>.from(student);
       updatedStudent['is_registered'] = true;
-      await _approvedStudentsBox!.put(phone, updatedStudent);
+      await _studentsBox!.put(phone, updatedStudent);
     }
   }
 
-  Future<void> bulkAddApprovedStudents(List<Map> students) async {
+  Future<void> bulkAddStudents(List<Map> students) async {
     _ensureInitialized();
     final Map<String, Map> studentMap = {
       for (var s in students) s['phone'].toString(): s
     };
-    await _approvedStudentsBox!.putAll(studentMap);
+    await _studentsBox!.putAll(studentMap);
   }
 
-  Future<void> clearApprovedStudents() async {
+  Future<void> clearStudents() async {
     _ensureInitialized();
-    await _approvedStudentsBox!.clear();
+    await _studentsBox!.clear();
+  }
+
+  // ===== PROFILES OPERATIONS (Student login profiles) =====
+  Future<void> saveProfile(Map profile) async {
+    _ensureInitialized();
+    // Save with studentId as key for quick lookup during login
+    await _profilesBox!.put(profile['studentId'], profile);
+  }
+
+  Future<Map?> getProfile(String studentId) async {
+    _ensureInitialized();
+    return _profilesBox!.get(studentId);
+  }
+
+  Future<List<Map>> getAllProfiles() async {
+    _ensureInitialized();
+    return _profilesBox!.values.toList();
   }
 
   // Helper to ensure initialized
@@ -405,20 +427,30 @@ class LocalDataSource {
       debugPrint('LocalDataSource: School-specific mock data seeded.');
     }
 
-    // Seed approved students if empty
-    if (_approvedStudentsBox!.isEmpty) {
-      debugPrint('LocalDataSource: Seeding approved students...');
-      await bulkAddApprovedStudents([
+    // Seed students (pre-registered from school) if empty
+    if (_studentsBox!.isEmpty) {
+      debugPrint('LocalDataSource: Seeding students database...');
+      await bulkAddStudents([
         {
+          'id': '001',
           'name': 'John Doe',
           'phone': '1234567890',
           'email': 'john@example.com',
+          'school_name': 'ABC School',
+          'board': 'CBSE',
+          'class_branch': '9A',
+          'serial_id': 'STU001',
           'is_registered': false,
         },
         {
+          'id': '002',
           'name': 'Jane Smith',
           'phone': '9876543210',
           'email': 'jane@example.com',
+          'school_name': 'XYZ Institute',
+          'board': 'ICSE',
+          'class_branch': '10B',
+          'serial_id': 'STU002',
           'is_registered': false,
         },
       ]);

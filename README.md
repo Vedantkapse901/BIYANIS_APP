@@ -51,10 +51,7 @@ Presentation Layer (UI & State Management)
 
 ### Technologies:
 - **Framework**: Flutter 3.19+
-<<<<<<< HEAD
 - **Backend**: Supabase (PostgreSQL, Auth, Storage)
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 - **State Management**: Riverpod (lightweight, reactive)
 - **Local Database**: Hive (fast, offline-first)
 - **UI**: Material 3 Design
@@ -173,21 +170,13 @@ student-logbook/
 - ✅ Zero setup required
 - ✅ Persist data on device
 - ✅ Automatic type safety
-<<<<<<< HEAD
+- ✅ Fast key-value access
 
 ### Cloud Sync (Supabase):
 - ✅ Real-time data synchronization
 - ✅ Secure Authentication
 - ✅ B2B Storage isolation for documents
 - ✅ Offline-first with background sync logic
-=======
-- ✅ Fast key-value access
-
-### Offline Functionality:
-- Data saved locally immediately
-- Sync logic ready for backend integration
-- Works in airplane mode
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 
 ---
 
@@ -229,7 +218,6 @@ final overallProgressProvider = FutureProvider<double>
 
 ---
 
-<<<<<<< HEAD
 ## 🌐 Backend Integration
 
 The system uses **Supabase** as its primary backend:
@@ -243,21 +231,6 @@ The system uses **Supabase** as its primary backend:
 class LogbookRepositoryImpl implements LogbookRepository {
   final LocalDataSource localDataSource;   // Fast UI updates
   final RemoteDataSource remoteDataSource; // Cloud persistence
-=======
-## 🌐 Backend Integration (Future)
-
-The repository pattern makes backend integration easy:
-
-```dart
-// Current: LocalDataSource
-// Future: Add ApiDataSource
-
-class LogbookRepositoryImpl implements LogbookRepository {
-  final LocalDataSource localDataSource;  // or ApiDataSource
-  final LocalDataSource localDataSource;   // cache
-
-  // Automatically syncs between local and API
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 }
 ```
 
@@ -392,4 +365,3 @@ For issues or questions:
 ## 🎉 Built with ❤️
 
 **Student Logbook** - Making learning visible, one task at a time.
-

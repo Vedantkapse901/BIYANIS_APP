@@ -1,32 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/role_selection_screen.dart';
 import 'features/auth/presentation/screens/super_admin_dashboard.dart';
-<<<<<<< HEAD
 import 'features/student/presentation/screens/student_dashboard_screen.dart';
-=======
-import 'features/logbook/presentation/screens/student_dashboard_screen.dart';
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 import 'features/logbook/presentation/screens/teacher_dashboard_screen.dart';
 import 'features/logbook/data/datasources/local_datasource.dart';
 import 'core/utils/admin_utils.dart';
 import 'core/widgets/biyani_logo.dart';
-<<<<<<< HEAD
 import 'core/services/supabase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Supabase
-  await SupabaseService.initialize();
+  // Initialize Supabase with error handling
+  try {
+    print('🔄 Initializing Supabase...');
+    await SupabaseService.initialize();
+    print('✅ Supabase initialized successfully!');
 
-=======
+    // Verify Supabase is actually accessible
+    final testClient = Supabase.instance.client;
+    print('✅ Supabase client accessible: $testClient');
+  } catch (e) {
+    print('❌ Supabase initialization failed: $e');
+    print('❌ Stack trace: ${StackTrace.current}');
+  }
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
   runApp(const ProviderScope(child: StudentLogbookApp()));
 }
 

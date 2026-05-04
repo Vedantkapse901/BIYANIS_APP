@@ -29,7 +29,6 @@ class ChapterModel extends HiveObject {
     this.orderIndex,
   });
 
-<<<<<<< HEAD
   factory ChapterModel.fromJson(Map<String, dynamic> json) {
     return ChapterModel(
       id: json['id'],
@@ -51,8 +50,6 @@ class ChapterModel extends HiveObject {
     };
   }
 
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
   ChapterEntity toEntity() {
     return ChapterEntity(
       id: id,

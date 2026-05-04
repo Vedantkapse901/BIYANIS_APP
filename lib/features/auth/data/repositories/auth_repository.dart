@@ -1,125 +1,91 @@
-<<<<<<< HEAD
 import 'package:supabase_flutter/supabase_flutter.dart';
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../features/logbook/data/datasources/local_datasource.dart';
 import '../../domain/registration_status.dart';
 
 class AuthRepository {
+  late final SupabaseClient _supabase = Supabase.instance.client;
   final LocalDataSource localDataSource = LocalDataSource();
-<<<<<<< HEAD
-  final SupabaseClient _supabase = Supabase.instance.client;
 
-  // Fetch all students for the "Search/Select Student" screen
-  Future<List<Map<String, dynamic>>> fetchAllStudents() async {
-    final response = await _supabase
-        .from('students')
-        .select('id, serial_id, name, email, phone, school_name, board, class_branch')
-        .order('serial_id');
-    return List<Map<String, dynamic>>.from(response);
-  }
+  // ===== REGISTRATION - READ FROM STUDENTS TABLE =====
+  Future<RegistrationStatus> validateStudent(String phone) async {
+    try {
+      final response = await _supabase
+          .from('students')
+          .select()
+          .eq('phone', phone)
+          .maybeSingle();
 
-  // Search student by phone for pre-fetching during registration
-  Future<Map<String, dynamic>?> searchStudentByPhone(String phone) async {
-    final response = await _supabase
-        .from('students')
-        .select('id, serial_id, name, email, phone, school_name, board, class_branch')
-        .eq('phone', phone)
-        .maybeSingle();
-    return response;
-  }
+      if (response == null) {
+        return RegistrationStatus.notAuthorized;
+      }
 
-  // Verify PIN for quick login
-  Future<Map<String, dynamic>?> loginWithPin(String serialId, String pin) async {
-    final response = await _supabase
-        .from('profiles')
-        .select()
-        .eq('serial_id', serialId)
-        .eq('pin', pin)
-        .eq('role', 'student')
-        .maybeSingle();
+      if (response['is_registered'] == true) {
+        return RegistrationStatus.alreadyRegistered;
+      }
 
-    if (response != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userId', response['id']);
-      await prefs.setString('userRole', 'student');
-      await prefs.setString('name', response['name']);
-      return response;
+      return RegistrationStatus.success;
+    } catch (e) {
+      return RegistrationStatus.notAuthorized;
     }
-    return null;
   }
 
-  // Activate student account: Create auth user and profile from student data
+  // Search student by phone from STUDENTS table
+  Future<Map<String, dynamic>?> searchStudentByPhone(String phone) async {
+    try {
+      final response = await _supabase
+          .from('students')
+          .select()
+          .eq('phone', phone)
+          .maybeSingle();
+
+      return response != null ? Map<String, dynamic>.from(response) : null;
+    } catch (e) {
+      print('Error searching student: $e');
+      return null;
+    }
+  }
+
+  // Activate student account - Use Supabase Auth
   Future<void> activateStudentAccount({
     required String studentId,
     required String email,
     required String password,
-    String? pin,
+    String? studentName,
   }) async {
-    // 1. Get student data from students table
-    final student = await _supabase
-        .from('students')
-        .select()
-        .eq('id', studentId)
-        .single();
+    try {
+      // Create Supabase Auth user
+      final authResponse = await _supabase.auth.signUp(
+        email: email,
+        password: password,
+      );
 
-    // 2. Sign up with Supabase Auth
-    final authResponse = await _supabase.auth.signUp(
-      email: email,
-      password: password,
-    );
+      if (authResponse.user != null) {
+        // Create profile in profiles table (using Supabase Auth user ID)
+        await _supabase.from('profiles').upsert({
+          'id': authResponse.user!.id,
+          'name': studentName ?? studentId,
+          'email': email,
+          'role': 'student',
+          'is_active': true,
+        });
 
-    if (authResponse.user == null) throw Exception('Activation failed: Could not create auth user');
-
-    // 3. Create profile for the student with data from students table
-    final profileId = authResponse.user!.id;
-    await _supabase.from('profiles').insert({
-      'id': profileId,
-      'name': student['name'],
-      'email': email,
-      'phone': student['phone'],
-      'role': 'student',
-      'school_name': student['school_name'],
-      'board': student['board'],
-      'class_branch': student['class_branch'],
-      'is_active': true,
-    });
-
-    // 4. Link profile to student
-    await _supabase.from('students').update({
-      'profile_id': profileId,
-    }).eq('id', studentId);
-
-    // 5. Local sync
-    final updatedStudent = await _supabase.from('students').select().eq('id', studentId).single();
-    await localDataSource.initialize();
-    await localDataSource.saveUser(Map<String, dynamic>.from(updatedStudent));
-=======
-
-  Future<RegistrationStatus> validateStudent(String phone) async {
-    await localDataSource.initialize();
-    final student = await localDataSource.getApprovedStudent(phone);
-
-    if (student == null) {
-      return RegistrationStatus.notAuthorized;
+        // Link profile to student (update profile_id in students table)
+        await _supabase
+            .from('students')
+            .update({'profile_id': authResponse.user!.id})
+            .eq('id', studentId);
+      } else {
+        throw Exception('Failed to create auth user');
+      }
+    } catch (e) {
+      throw Exception('Failed to activate account: $e');
     }
-
-    if (student['is_registered'] == true) {
-      return RegistrationStatus.alreadyRegistered;
-    }
-
-    return RegistrationStatus.success;
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
   }
 
   Future<void> registerUser({
     required String name,
-<<<<<<< HEAD
-    required String username, // Using email for Supabase Auth
-=======
     required String username,
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
     required String password,
     required String role,
     String? phone,
@@ -127,198 +93,144 @@ class AuthRepository {
     String? batch,
     String? wardName,
   }) async {
-<<<<<<< HEAD
-    // 1. Sign up with Supabase Auth
-    final authResponse = await _supabase.auth.signUp(
-      email: username.contains('@') ? username : '$username@student.logbook',
-      password: password,
-      data: {
+    try {
+      await _supabase.from('profiles').upsert({
+        'username': username,
+        'password': password,
         'name': name,
+        'email': username.contains('@') ? username : '$username@student.logbook',
         'role': role,
-      },
-    );
-
-    if (authResponse.user == null) throw Exception('Registration failed');
-
-    // 2. Create profile in public.profiles
-    await _supabase.from('profiles').upsert({
-      'id': authResponse.user!.id,
-      'name': name,
-      'email': authResponse.user!.email,
-      'role': role,
-      'phone': phone,
-    });
-
-    // 3. Local sync
-    await localDataSource.initialize();
-    final user = {
-      'id': authResponse.user!.id,
-      'name': name,
-      'username': username,
-      'role': role,
-      'phone': phone,
-      'batch': batch,
-    };
-=======
-    await localDataSource.initialize();
-    
-    String? studentBatch = batch;
-
-    // Mark as registered in approved_students if it's a student and phone is provided
-    if (role == 'student' && phone != null) {
-      final approved = await localDataSource.getApprovedStudent(phone);
-      if (approved != null) {
-        studentBatch = approved['batch'] ?? batch;
-      }
-      await localDataSource.markStudentAsRegistered(phone);
+        'phone': phone,
+        'branch': branch,
+        'batch': batch,
+        'ward_name': wardName,
+        'is_registered': true,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      throw Exception('Registration failed: $e');
     }
-
-    final user = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'name': name,
-      'username': username,
-      'password': password,
-      'role': role,
-      'phone': phone,
-      'branch': branch,
-      'batch': studentBatch,
-      'wardName': wardName,
-    };
-
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
-    await localDataSource.saveUser(user);
   }
 
+  // ===== LOGIN - USE SUPABASE AUTH =====
   Future<Map<String, dynamic>?> login(String username, String password, String role) async {
-<<<<<<< HEAD
     try {
-      String email = username;
-
-      // For student login with serial_id, look up the email from students table
-      if (role == 'student' && !username.contains('@')) {
+      // For STUDENT login - use serial_id (001, 002, etc.)
+      if (role == 'student') {
+        // Get student by serial_id
         final student = await _supabase
             .from('students')
-            .select('email')
+            .select()
             .eq('serial_id', username)
             .maybeSingle();
 
-        if (student != null && student['email'] != null) {
-          email = student['email'];
-        } else {
-          return null; // Student not found
+        if (student == null) {
+          return null;
         }
-      } else if (!username.contains('@')) {
-        email = '$username@student.logbook';
+
+        final email = student['email'] ?? '${student['serial_id']}@student.logbook';
+
+        // Authenticate with Supabase Auth
+        final authResponse = await _supabase.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+
+        if (authResponse.user != null) {
+          // Get profile data
+          final profile = await _supabase
+              .from('profiles')
+              .select()
+              .eq('id', authResponse.user!.id)
+              .maybeSingle();
+
+          if (profile != null) {
+            final userData = Map<String, dynamic>.from(profile);
+
+            // Save session
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('userRole', role);
+            await prefs.setString('studentId', student['serial_id'] ?? username);
+            await prefs.setString('email', email);
+            await prefs.setString('userId', authResponse.user!.id);
+
+            // Save student details
+            await prefs.setString('name', student['name'] ?? '');
+            await prefs.setString('batch', student['batch'] ?? '');
+            if (student['branch'] != null) {
+              await prefs.setString('branch', student['branch']);
+            }
+
+            return userData;
+          }
+        }
+        return null;
       }
 
+      // For OTHER ROLES - use email/username with Supabase Auth
       final authResponse = await _supabase.auth.signInWithPassword(
-        email: email,
+        email: username,
         password: password,
       );
 
       if (authResponse.user != null) {
-        final profile = await _supabase
+        // Get profile data
+        final response = await _supabase
             .from('profiles')
             .select()
             .eq('id', authResponse.user!.id)
-            .single();
+            .eq('role', role)
+            .maybeSingle();
 
-        // Save session
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userRole', role);
-        await prefs.setString('userId', authResponse.user!.id);
-        await prefs.setString('name', profile['name']);
+        if (response != null) {
+          final userData = Map<String, dynamic>.from(response);
 
-        return Map<String, dynamic>.from(profile);
+          // Save session
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('userRole', role);
+          await prefs.setString('username', username);
+          await prefs.setString('name', response['name'] ?? '');
+          await prefs.setString('userId', authResponse.user!.id);
+          if (response['branch'] != null) await prefs.setString('branch', response['branch']);
+          if (response['batch'] != null) await prefs.setString('batch', response['batch']);
+
+          return userData;
+        }
       }
+
       return null;
     } catch (e) {
-      // Fallback for hardcoded admin during migration
-      if (role == 'super_admin' && username == 'superadmin' && password == 'admin123') {
-        return {'role': 'super_admin', 'name': 'Super Administrator'};
-      }
-=======
-    await localDataSource.initialize();
-    final users = await localDataSource.getAllUsers();
-    
-    try {
-      final user = users.firstWhere(
-        (u) => u['username'] == username && u['password'] == password && u['role'] == role
-      );
-      
-      // Convert Map to Map<String, dynamic>
-      final userData = Map<String, dynamic>.from(user);
-      
-      // Save session
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userRole', role);
-      await prefs.setString('username', username);
-      await prefs.setString('name', user['name']);
-      if (user['branch'] != null) await prefs.setString('branch', user['branch']);
-      if (user['batch'] != null) await prefs.setString('batch', user['batch']);
-      if (user['wardName'] != null) await prefs.setString('wardName', user['wardName']);
-
-      return userData;
-    } catch (e) {
-      // Hardcoded login for Super Admin and Teacher
-      if (role == 'super_admin' && username == 'superadmin' && password == 'admin123') {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userRole', 'super_admin');
-        await prefs.setString('username', 'superadmin');
-        await prefs.setString('name', 'Super Administrator');
-        return {'role': 'super_admin', 'name': 'Super Administrator'};
-      }
-
-      if (role == 'teacher' && username == 'teacher' && password == 'password123') {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userRole', 'teacher');
-        await prefs.setString('username', 'teacher');
-        await prefs.setString('name', 'Teacher');
-        return {'role': 'teacher', 'name': 'Teacher'};
-      }
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
+      print('Login error: $e');
       return null;
     }
   }
 
-<<<<<<< HEAD
-  Future<void> logout() async {
-    await _supabase.auth.signOut();
-=======
   Future<Map<String, dynamic>?> recoverAccount({
     required String name,
     required String role,
     String? wardName,
   }) async {
-    await localDataSource.initialize();
-    final users = await localDataSource.getAllUsers();
-    
     try {
-      final user = users.firstWhere(
-        (u) {
-          final matchesName = u['name'].toString().toLowerCase() == name.toLowerCase();
-          final matchesRole = u['role'] == role;
-          if (role == 'parent') {
-            final matchesWard = u['wardName'].toString().toLowerCase() == wardName?.toLowerCase();
-            return matchesName && matchesRole && matchesWard;
-          }
-          return matchesName && matchesRole;
-        }
-      );
-      return Map<String, dynamic>.from(user);
+      var query = _supabase
+          .from('profiles')
+          .select()
+          .eq('name', name)
+          .eq('role', role);
+
+      if (role == 'parent' && wardName != null) {
+        query = query.eq('ward_name', wardName);
+      }
+
+      final response = await query.maybeSingle();
+      return response != null ? Map<String, dynamic>.from(response) : null;
     } catch (e) {
       return null;
     }
   }
 
   Future<void> setUserRole(String role) async {
-    // Store in SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('userRole', role);
-
-    // Also store in Hive for logbook
-    await localDataSource.initialize();
-    await localDataSource.saveUserRole(role);
   }
 
   Future<String?> getUserRole() async {
@@ -332,7 +244,14 @@ class AuthRepository {
   }
 
   Future<void> logout() async {
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
+    try {
+      // Sign out from Supabase Auth
+      await _supabase.auth.signOut();
+    } catch (e) {
+      print('Supabase logout error: $e');
+    }
+
+    // Clear local session
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
   }

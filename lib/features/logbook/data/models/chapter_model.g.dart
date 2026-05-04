@@ -21,11 +21,7 @@ class ChapterModelAdapter extends TypeAdapter<ChapterModel> {
       subjectId: fields[1] as String,
       title: fields[2] as String,
       topics: (fields[3] as List).cast<TopicModel>(),
-<<<<<<< HEAD
       orderIndex: fields[4] as int?,
-=======
-      orderIndex: fields[4] as int,
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
     );
   }
 

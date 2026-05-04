@@ -22,31 +22,19 @@ class SubjectModelAdapter extends TypeAdapter<SubjectModel> {
       color: fields[2] as String,
       icon: fields[3] as String,
       topics: (fields[4] as List).cast<TopicModel>(),
-<<<<<<< HEAD
       totalTopics: fields[5] as int?,
       completedTopics: fields[6] as int?,
       createdAt: fields[7] as DateTime?,
       updatedAt: fields[8] as DateTime?,
       chapters: (fields[9] as List).cast<ChapterModel>(),
       batch: fields[10] as String?,
-=======
-      totalTopics: fields[5] as int,
-      completedTopics: fields[6] as int,
-      createdAt: fields[7] as DateTime,
-      updatedAt: fields[8] as DateTime,
-      chapters: (fields[9] as List).cast<ChapterModel>(),
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
     );
   }
 
   @override
   void write(BinaryWriter writer, SubjectModel obj) {
     writer
-<<<<<<< HEAD
       ..writeByte(11)
-=======
-      ..writeByte(10)
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -66,13 +54,9 @@ class SubjectModelAdapter extends TypeAdapter<SubjectModel> {
       ..writeByte(8)
       ..write(obj.updatedAt)
       ..writeByte(9)
-<<<<<<< HEAD
       ..write(obj.chapters)
       ..writeByte(10)
       ..write(obj.batch);
-=======
-      ..write(obj.chapters);
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
   }
 
   @override

@@ -21,19 +21,11 @@ class TopicModelAdapter extends TypeAdapter<TopicModel> {
       subjectId: fields[1] as String,
       title: fields[2] as String,
       description: fields[3] as String?,
-<<<<<<< HEAD
       isCompleted: fields[4] as bool?,
       createdAt: fields[5] as DateTime?,
       completedAt: fields[6] as DateTime?,
       updatedAt: fields[7] as DateTime?,
       orderIndex: fields[8] as int?,
-=======
-      isCompleted: fields[4] as bool,
-      createdAt: fields[5] as DateTime,
-      completedAt: fields[6] as DateTime?,
-      updatedAt: fields[7] as DateTime,
-      orderIndex: fields[8] as int,
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
       tasks: (fields[9] as List).cast<TaskModel>(),
     );
   }

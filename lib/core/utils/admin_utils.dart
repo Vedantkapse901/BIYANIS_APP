@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../features/logbook/data/datasources/local_datasource.dart';
 
 class AdminUtils {
@@ -27,9 +28,10 @@ class AdminUtils {
     }
   }
 
-  /// Bulk uploads approved students from a CSV string.
+  /// Bulk uploads approved students from a CSV string to Supabase.
   /// CSV format: name,phone,email,batch
   static Future<void> bulkUploadFromCsv(String csvContent) async {
+    final supabase = Supabase.instance.client;
     final localDataSource = LocalDataSource();
     await localDataSource.initialize();
 
@@ -49,15 +51,27 @@ class AdminUtils {
           'name': fields[0].trim(),
           'phone': fields[1].trim(),
           'email': fields.length > 2 ? fields[2].trim() : '',
-          'batch': fields.length > 3 ? fields[3].trim() : 'ICSE 9', // Default batch if not provided
+          'batch': fields.length > 3 ? fields[3].trim() : 'ICSE 9',
           'is_registered': false,
         });
       }
     }
 
     if (students.isNotEmpty) {
-      await localDataSource.bulkAddApprovedStudents(students);
-      debugPrint('AdminUtils: Successfully uploaded ${students.length} students.');
+      try {
+        // Upload to Supabase (use upsert to handle duplicates)
+        await supabase.from('students').upsert(students);
+        debugPrint('AdminUtils: Successfully uploaded ${students.length} students to Supabase.');
+
+        // Also sync to local Hive for offline access
+        await localDataSource.bulkAddStudents(students);
+        debugPrint('AdminUtils: Also synced to local Hive.');
+      } catch (e) {
+        debugPrint('AdminUtils: Supabase upload failed: $e');
+        // Fallback to local Hive if Supabase fails
+        await localDataSource.bulkAddStudents(students);
+        debugPrint('AdminUtils: Fallback to local Hive successful.');
+      }
     }
   }
 
@@ -65,8 +79,8 @@ class AdminUtils {
   static Future<void> seedInitialApprovedStudents() async {
     final localDataSource = LocalDataSource();
     await localDataSource.initialize();
-    
-    await localDataSource.bulkAddApprovedStudents([
+
+    await localDataSource.bulkAddStudents([
       {
         'name': 'ICSE Student',
         'phone': '1111111111',

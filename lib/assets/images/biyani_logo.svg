@@ -1,0 +1,32 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#000000"/>
+
+  <!-- Blue B -->
+  <path d="M 300 150 Q 400 150 450 200 Q 500 250 450 300 L 450 350 Q 500 400 450 450 Q 400 500 300 500 L 250 500 L 250 150 Z" fill="#1E5A96" stroke="#1E5A96" stroke-width="30"/>
+  <circle cx="380" cy="230" r="60" fill="none" stroke="#1E5A96" stroke-width="30"/>
+  <circle cx="380" cy="420" r="60" fill="none" stroke="#1E5A96" stroke-width="30"/>
+
+  <!-- Pink/Red Book Pages (middle) -->
+  <g>
+    <!-- Left pages -->
+    <path d="M 300 480 Q 350 500 380 550 L 350 650 Q 300 620 280 580 Z" fill="#E74C6A"/>
+    <path d="M 350 480 Q 400 500 430 550 L 400 650 Q 350 620 330 580 Z" fill="#F05A7F"/>
+    <path d="M 400 480 Q 450 500 480 550 L 450 650 Q 400 620 380 580 Z" fill="#E74C6A"/>
+
+    <!-- Right pages -->
+    <path d="M 550 480 Q 500 500 470 550 L 500 650 Q 550 620 570 580 Z" fill="#F05A7F"/>
+    <path d="M 600 480 Q 550 500 520 550 L 550 650 Q 600 620 620 580 Z" fill="#E74C6A"/>
+    <path d="M 650 480 Q 600 500 570 550 L 600 650 Q 650 620 670 580 Z" fill="#F05A7F"/>
+  </g>
+
+  <!-- Blue Book Bottom -->
+  <path d="M 200 650 Q 300 700 512 700 Q 724 700 824 650 L 850 750 Q 750 800 512 800 Q 274 800 174 750 Z" fill="#1E5A96"/>
+
+  <!-- Book cover lines -->
+  <path d="M 250 680 Q 512 720 774 680" fill="none" stroke="#1E5A96" stroke-width="25"/>
+  <path d="M 240 720 Q 512 750 784 720" fill="none" stroke="#1E5A96" stroke-width="25"/>
+
+  <!-- Text area (simplified) -->
+  <text x="512" y="900" font-family="Arial, sans-serif" font-size="60" font-weight="bold" text-anchor="middle" fill="#666666">Knowledge</text>
+</svg>

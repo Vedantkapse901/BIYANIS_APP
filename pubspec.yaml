@@ -39,7 +39,6 @@ dependencies:
   # Logging
   logger: ^2.0.0
 
-<<<<<<< HEAD
   # Supabase
   supabase_flutter: ^2.4.0
 
@@ -49,8 +48,6 @@ dependencies:
   # S3 Compatible Storage (for Backblaze B2)
   minio: ^3.5.8
 
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -49,7 +49,6 @@ class TopicModel extends HiveObject {
     this.tasks = const [],
   });
 
-<<<<<<< HEAD
   factory TopicModel.fromJson(Map<String, dynamic> json) {
     return TopicModel(
       id: json['id'],
@@ -78,8 +77,6 @@ class TopicModel extends HiveObject {
     };
   }
 
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
   // Convert to Entity
   TopicEntity toEntity() {
     return TopicEntity(

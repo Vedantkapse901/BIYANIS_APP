@@ -128,14 +128,13 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     setState(() => _isLoading = true);
     try {
       await _localDataSource.initialize();
-      
+
       if (!_isAppending) {
-        // Clear existing (simulated by overwriting Hive box logic in DataSource if implemented)
-        // For now, we use bulkAdd which can be modified to clear first
-        await _localDataSource.clearApprovedStudents(); 
+        // Clear existing students
+        await _localDataSource.clearStudents();
       }
 
-      await _localDataSource.bulkAddApprovedStudents(_previewData);
+      await _localDataSource.bulkAddStudents(_previewData);
       
       _showMessage('Successfully uploaded ${_previewData.length} students.');
       setState(() {

@@ -4,7 +4,7 @@ import '../models/subject_model.dart';
 import '../models/topic_model.dart';
 
 class RemoteDataSource {
-  final SupabaseClient _client = Supabase.instance.client;
+  late final SupabaseClient _client = Supabase.instance.client;
   final B2StorageService _b2storage = B2StorageService();
 
   // Subjects with full hierarchy: Chapters -> Topics -> Tasks

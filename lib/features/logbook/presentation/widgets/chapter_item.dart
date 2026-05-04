@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
-<<<<<<< HEAD
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/topic_entity.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../providers/logbook_providers.dart';
-=======
-import '../../domain/entities/topic_entity.dart';
-import '../../../../core/theme/app_theme.dart';
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 import 'task_checkbox_item.dart';
 
 class ChapterItem extends StatefulWidget {
@@ -45,7 +40,6 @@ class _ChapterItemState extends State<ChapterItem> {
       child: Column(
         children: [
           ListTile(
-<<<<<<< HEAD
             dense: true,
             onTap: () => setState(() => _isExpanded = !_isExpanded),
             title: Text(
@@ -54,15 +48,6 @@ class _ChapterItemState extends State<ChapterItem> {
             ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4.0),
-=======
-            onTap: () => setState(() => _isExpanded = !_isExpanded),
-            title: Text(
-              widget.title,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 8.0),
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(2),
                 child: LinearProgressIndicator(
@@ -71,11 +56,7 @@ class _ChapterItemState extends State<ChapterItem> {
                   valueColor: AlwaysStoppedAnimation(
                     widget.progress == 1.0 ? Colors.green : AppTheme.primary,
                   ),
-<<<<<<< HEAD
                   minHeight: 4,
-=======
-                  minHeight: 6,
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
                 ),
               ),
             ),
@@ -84,50 +65,25 @@ class _ChapterItemState extends State<ChapterItem> {
               children: [
                 Text(
                   '${(widget.progress * 100).toInt()}%',
-<<<<<<< HEAD
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                 ),
                 Icon(_isExpanded ? Icons.expand_less : Icons.expand_more, size: 18),
-=======
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-                if (widget.topics != null && widget.topics!.isNotEmpty)
-                  Icon(_isExpanded ? Icons.expand_less : Icons.expand_more, size: 20),
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
               ],
             ),
           ),
           if (_isExpanded && widget.topics != null)
             Padding(
-<<<<<<< HEAD
               padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
               child: Column(
                 children: widget.topics!.map((topic) => _buildTopicRow(topic)).toList(),
-=======
-              padding: const EdgeInsets.only(left: 12.0, right: 12.0, bottom: 12.0),
-              child: Column(
-                children: widget.topics!
-                    .expand((topic) => topic.tasks.map((task) => TaskCheckboxItem(
-                          key: ValueKey('task_${task.id}'),
-                          subjectId: widget.subjectId,
-                          chapterId: widget.chapterId,
-                          topicId: topic.id,
-                          taskId: task.id,
-                          title: task.title,
-                          isCompleted: task.isCompleted,
-                        )))
-                    .toList(),
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
               ),
             ),
         ],
       ),
     );
   }
-<<<<<<< HEAD
 
   Widget _buildTopicRow(TopicEntity topic) {
-    // Sort tasks by orderIndex
     final sortedTasks = [...topic.tasks]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
 
     return Column(
@@ -218,6 +174,4 @@ class CompactTaskCheckbox extends ConsumerWidget {
       ),
     );
   }
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
 }

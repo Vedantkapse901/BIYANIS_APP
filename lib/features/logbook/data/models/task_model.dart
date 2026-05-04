@@ -17,18 +17,14 @@ class TaskModel extends HiveObject {
   @HiveField(3)
   bool isCompleted;
 
-<<<<<<< HEAD
   @HiveField(4)
   int orderIndex;
 
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
   TaskModel({
     required this.id,
     required this.topicId,
     required this.title,
     required this.isCompleted,
-<<<<<<< HEAD
     this.orderIndex = 0,
   });
 
@@ -59,20 +55,13 @@ class TaskModel extends HiveObject {
     };
   }
 
-=======
-  });
-
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
   TaskEntity toEntity() {
     return TaskEntity(
       id: id,
       topicId: topicId,
       title: title,
       isCompleted: isCompleted,
-<<<<<<< HEAD
       orderIndex: orderIndex,
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
     );
   }
 
@@ -82,10 +71,7 @@ class TaskModel extends HiveObject {
       topicId: entity.topicId,
       title: entity.title,
       isCompleted: entity.isCompleted,
-<<<<<<< HEAD
       orderIndex: entity.orderIndex,
-=======
->>>>>>> 3a7f1f8f3040601e3ab37a111741457fabfb31f1
     );
   }
 }
