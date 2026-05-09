@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../domain/entities/subject_entity.dart';
+import '../../data/models/subject_model.dart';
 import '../../../../core/theme/app_theme.dart';
 import 'chapter_item.dart';
 
 class SubjectCard extends ConsumerStatefulWidget {
-  final SubjectEntity subject;
+  final SubjectModel subject;
   final int index;
 
   const SubjectCard({
@@ -39,7 +39,12 @@ class _SubjectCardState extends ConsumerState<SubjectCard>
   }
 
   double _calculateSubjectProgress() {
-    return widget.subject.progress;
+    // Calculate progress from chapters/tasks
+    if (widget.subject.chapters == null || widget.subject.chapters!.isEmpty) {
+      return 0;
+    }
+    // TODO: Calculate based on completed tasks
+    return 0; // Default to 0 for now
   }
 
   void _toggleExpand() {
@@ -90,7 +95,7 @@ class _SubjectCardState extends ConsumerState<SubjectCard>
                     ),
                     child: Center(
                       child: Text(
-                        widget.subject.icon,
+                        widget.subject.icon ?? widget.subject.name[0],
                         style: const TextStyle(fontSize: 28),
                       ),
                     ),
@@ -163,34 +168,24 @@ class _SubjectCardState extends ConsumerState<SubjectCard>
                 ),
               ),
               child: Column(
-                children: widget.subject.chapters.isNotEmpty
-                    ? widget.subject.chapters
+                children: widget.subject.chapters != null && widget.subject.chapters!.isNotEmpty
+                    ? widget.subject.chapters!
                         .map((chapter) => ChapterItem(
                               key: ValueKey('chapter_${chapter.id}'),
                               subjectId: widget.subject.id,
                               chapterId: chapter.id,
                               title: chapter.title,
-                              progress: chapter.progress,
-                              topics: chapter.topics,
+                              progress: 0, // TODO: Calculate from tasks
+                              topics: null, // No topics level anymore
+                              tasks: chapter.tasks, // Pass tasks from chapter
                             ))
                         .toList()
-                    : (widget.subject.topics != null && widget.subject.topics!.isNotEmpty)
-                        ? widget.subject.topics!
-                            .map((topic) => ChapterItem(
-                                  key: ValueKey('topic_${topic.id}'),
-                                  subjectId: widget.subject.id,
-                                  chapterId: 'none',
-                                  title: topic.title,
-                                  progress: topic.progress,
-                                  topics: [topic],
-                                ))
-                            .toList()
-                        : [
-                            const Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: Text('No content found for this subject.'),
-                            )
-                          ],
+                    : [
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text('No content found for this subject.'),
+                        )
+                      ],
               ),
             ),
           ),

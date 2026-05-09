@@ -47,12 +47,17 @@ class AdminUtils {
     for (int i = startIndex; i < lines.length; i++) {
       final List<String> fields = lines[i].split(',');
       if (fields.length >= 2) {
+        final String batchValue = fields.length > 3 ? fields[3].trim() : 'ICSE 9';
+        final List<String> batchParts = batchValue.split(' ');
+        final String board = batchParts.isNotEmpty ? batchParts[0] : 'ICSE';
+        final String standard = batchParts.length > 1 ? batchParts[1] : '9';
+
         students.add({
           'name': fields[0].trim(),
           'phone': fields[1].trim(),
           'email': fields.length > 2 ? fields[2].trim() : '',
-          'batch': fields.length > 3 ? fields[3].trim() : 'ICSE 9',
-          'is_registered': false,
+          'board': board,
+          'standard': standard,
         });
       }
     }
@@ -85,15 +90,15 @@ class AdminUtils {
         'name': 'ICSE Student',
         'phone': '1111111111',
         'email': 'icse@example.com',
-        'batch': 'ICSE 9',
-        'is_registered': false,
+        'board': 'ICSE',
+        'standard': '9',
       },
       {
         'name': 'CBSE Student',
         'phone': '2222222222',
         'email': 'cbse@example.com',
-        'batch': 'CBSE 9',
-        'is_registered': false,
+        'board': 'CBSE',
+        'standard': '9',
       },
     ]);
   }

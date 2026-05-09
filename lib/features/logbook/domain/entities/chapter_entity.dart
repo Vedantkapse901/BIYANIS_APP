@@ -1,4 +1,5 @@
 import 'topic_entity.dart';
+import 'task_entity.dart';
 
 class ChapterEntity {
   final String id;
@@ -6,6 +7,7 @@ class ChapterEntity {
   final String title;
   final List<TopicEntity> topics;
   final int orderIndex;
+  final List<TaskEntity> tasks;
 
   ChapterEntity({
     required this.id,
@@ -13,6 +15,7 @@ class ChapterEntity {
     required this.title,
     required this.topics,
     required this.orderIndex,
+    this.tasks = const [],
   });
 
   double get progress {
@@ -30,6 +33,7 @@ class ChapterEntity {
     String? title,
     List<TopicEntity>? topics,
     int? orderIndex,
+    List<TaskEntity>? tasks,
   }) {
     return ChapterEntity(
       id: id ?? this.id,
@@ -37,6 +41,7 @@ class ChapterEntity {
       title: title ?? this.title,
       topics: topics ?? this.topics,
       orderIndex: orderIndex ?? this.orderIndex,
+      tasks: tasks ?? this.tasks,
     );
   }
 }

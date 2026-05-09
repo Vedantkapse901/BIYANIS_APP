@@ -369,31 +369,16 @@ class LocalDataSource {
           // Create 2 Chapters for each
           for (int c = 1; c <= 2; c++) {
             final chapterId = uuid.v4();
-            List<TopicModel> topics = [];
+            List<TaskModel> chapterTasks = [];
 
-            for (int t = 1; t <= 2; t++) {
-              final topicId = uuid.v4();
-              List<TaskModel> tasks = [];
-
-              for (int k = 1; k <= 3; k++) {
-                tasks.add(TaskModel(
-                  id: uuid.v4(),
-                  topicId: topicId,
-                  title: '${sData['name']} - Ch $c Topic $t Task $k',
-                  isCompleted: false,
-                ));
-              }
-
-              topics.add(TopicModel(
-                id: topicId,
-                subjectId: subjectId,
-                title: 'Topic $c.$t',
-                description: 'Syllabus for $batch',
+            // Create tasks directly for the chapter (no topics level)
+            for (int t = 1; t <= 6; t++) {
+              chapterTasks.add(TaskModel(
+                id: uuid.v4(),
+                chapterId: chapterId,
+                title: '${sData['name']} - Ch $c Task $t',
                 isCompleted: false,
-                createdAt: now,
-                updatedAt: now,
                 orderIndex: t,
-                tasks: tasks,
               ));
             }
 
@@ -401,12 +386,13 @@ class LocalDataSource {
               id: chapterId,
               subjectId: subjectId,
               title: 'Chapter $c for $batch',
-              topics: topics,
+              topics: [], // Keep for backward compatibility
               orderIndex: c,
+              tasks: chapterTasks, // New structure: tasks directly in chapter
             ));
           }
 
-          int totalTopicsCount = chapters.fold(0, (sum, c) => sum + c.topics.length);
+          int totalTasksCount = chapters.fold(0, (sum, c) => sum + c.tasks.length);
 
           final subject = SubjectModel(
             id: subjectId,
@@ -414,7 +400,7 @@ class LocalDataSource {
             color: sData['color']!,
             icon: sData['icon']!,
             batch: batch,
-            totalTopics: totalTopicsCount,
+            totalTopics: totalTasksCount,
             completedTopics: 0,
             createdAt: now,
             updatedAt: now,

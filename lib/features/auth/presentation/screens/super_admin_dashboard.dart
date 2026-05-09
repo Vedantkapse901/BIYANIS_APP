@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as excel_lib;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../logbook/data/datasources/local_datasource.dart';
 import '../../../logbook/presentation/screens/student_detail_screen.dart';
@@ -20,8 +21,10 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   int _currentIndex = 0;
   bool _isAppending = true;
   bool _isLoading = false;
+  String _importType = 'Students'; // 'Students' or 'Tasks'
   List<Map<String, dynamic>> _previewData = [];
   final LocalDataSource _localDataSource = LocalDataSource();
+  final List<String> _importOptions = ['Students', 'Tasks'];
 
   // For User Management
   List<Map> _allUsers = [];
@@ -64,14 +67,24 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
               .transform(utf8.decoder)
               .transform(const CsvToListConverter())
               .toList();
-          parsedData = _processRawList(fields);
+
+          if (_importType == 'Students') {
+            parsedData = _processRawList(fields);
+          } else {
+            parsedData = await _processTaskList(fields);
+          }
         } else {
           var bytes = file.readAsBytesSync();
           var excel = excel_lib.Excel.decodeBytes(bytes);
           for (var table in excel.tables.keys) {
             var rows = excel.tables[table]!.rows;
             List<List<dynamic>> rawList = rows.map((row) => row.map((cell) => cell?.value).toList()).toList();
-            parsedData = _processRawList(rawList);
+
+            if (_importType == 'Students') {
+              parsedData = _processRawList(rawList);
+            } else {
+              parsedData = await _processTaskList(rawList);
+            }
             break; // Only process first sheet
           }
         }
@@ -91,8 +104,10 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     if (rawData.isEmpty) return [];
 
     int startIndex = 0;
-    // Skip header if first row contains 'name' or 'phone'
-    if (rawData[0].any((cell) => cell.toString().toLowerCase().contains('name') || cell.toString().toLowerCase().contains('phone'))) {
+    // Skip header if first row contains keywords
+    if (rawData[0].any((cell) =>
+        cell.toString().toLowerCase().contains('name') ||
+        cell.toString().toLowerCase().contains('phone'))) {
       startIndex = 1;
     }
 
@@ -106,7 +121,10 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       String name = row[0]?.toString().trim() ?? '';
       String phone = row[1]?.toString().trim() ?? '';
       String email = row.length > 2 ? row[2]?.toString().trim() ?? '' : '';
-      String batch = row.length > 3 ? row[3]?.toString().trim() ?? '' : 'ICSE 9';
+      String batchValue = row.length > 3 ? row[3]?.toString().trim() ?? '' : 'ICSE 9';
+      final List<String> batchParts = batchValue.split(' ');
+      final String board = batchParts.isNotEmpty ? batchParts[0] : 'ICSE';
+      final String standard = batchParts.length > 1 ? batchParts[1] : '9';
 
       if (phone.isEmpty || seenPhones.contains(phone)) continue;
 
@@ -115,11 +133,46 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         'name': name,
         'phone': phone,
         'email': email,
-        'batch': batch,
+        'board': board,
+        'standard': standard,
         'is_registered': false,
       });
     }
     return students;
+  }
+
+  Future<List<Map<String, dynamic>>> _processTaskList(List<List<dynamic>> rawData) async {
+    if (rawData.isEmpty) return [];
+
+    // Header detection: Chapter Name, Task Title, Order
+    int startIndex = 0;
+    if (rawData[0].any((cell) => cell.toString().toLowerCase().contains('chapter'))) {
+      startIndex = 1;
+    }
+
+    List<Map<String, dynamic>> tasks = [];
+
+    // We'll insert with chapter_name and handle ID matching in the upload step
+    for (var i = startIndex; i < rawData.length; i++) {
+      var row = rawData[i];
+      if (row.length < 2) continue;
+
+      String chapterName = row[0]?.toString().trim() ?? '';
+      String taskTitle = row[1]?.toString().trim() ?? '';
+      int order = 1;
+      if (row.length > 2) {
+        order = int.tryParse(row[2].toString()) ?? 1;
+      }
+
+      if (chapterName.isNotEmpty && taskTitle.isNotEmpty) {
+        tasks.add({
+          'chapter_name': chapterName,
+          'title': taskTitle,
+          'order_index': order,
+        });
+      }
+    }
+    return tasks;
   }
 
   Future<void> _uploadToDatabase() async {
@@ -127,16 +180,57 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
 
     setState(() => _isLoading = true);
     try {
-      await _localDataSource.initialize();
+      final supabase = Supabase.instance.client;
 
-      if (!_isAppending) {
-        // Clear existing students
-        await _localDataSource.clearStudents();
+      if (_importType == 'Students') {
+        await _localDataSource.initialize();
+        if (!_isAppending) {
+          await _localDataSource.clearStudents();
+        }
+
+        // Upload to Supabase
+        await supabase.from('students').upsert(_previewData);
+        // Sync Local
+        await _localDataSource.bulkAddStudents(_previewData);
+        _showMessage('Successfully uploaded ${_previewData.length} students.');
+      } else {
+        // Task Upload Logic
+        print('⚡ Starting Task Upload for ${_previewData.length} items');
+
+        // 1. Get all chapters to match IDs
+        final chaptersResponse = await supabase.from('chapters').select('id, title');
+        final Map<String, String> chapterMap = {
+          for (var c in chaptersResponse as List) c['title'].toString().toLowerCase().trim(): c['id'].toString()
+        };
+
+        final List<Map<String, dynamic>> tasksToUpload = [];
+        int missingChapters = 0;
+
+        for (var task in _previewData) {
+          final cName = task['chapter_name'].toString().toLowerCase().trim();
+          final cId = chapterMap[cName];
+
+          if (cId != null) {
+            tasksToUpload.add({
+              'chapter_id': cId,
+              'chapter_name': task['chapter_name'],
+              'title': task['title'],
+              'order_index': task['order_index'],
+            });
+          } else {
+            missingChapters++;
+            print('⚠️ Missing chapter in DB: ${task['chapter_name']}');
+          }
+        }
+
+        if (tasksToUpload.isNotEmpty) {
+          await supabase.from('tasks').insert(tasksToUpload);
+          _showMessage('Uploaded ${tasksToUpload.length} tasks. ($missingChapters chapters not found)');
+        } else {
+          _showMessage('No tasks could be matched to existing chapters.', isError: true);
+        }
       }
 
-      await _localDataSource.bulkAddStudents(_previewData);
-      
-      _showMessage('Successfully uploaded ${_previewData.length} students.');
       setState(() {
         _previewData = [];
         _isLoading = false;
@@ -208,23 +302,40 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  const Text('Import Approved Students', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Overwrite'),
-                      Switch(
-                        value: _isAppending,
-                        onChanged: (val) => setState(() => _isAppending = val),
+                      Text(
+                        'Import $_importType',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
-                      const Text('Append'),
+                      DropdownButton<String>(
+                        value: _importType,
+                        onChanged: (val) => setState(() {
+                          _importType = val!;
+                          _previewData = [];
+                        }),
+                        items: _importOptions.map((opt) => DropdownMenuItem(value: opt, child: Text(opt))).toList(),
+                      ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  if (_importType == 'Students')
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('Overwrite'),
+                        Switch(
+                          value: _isAppending,
+                          onChanged: (val) => setState(() => _isAppending = val),
+                        ),
+                        const Text('Append'),
+                      ],
+                    ),
                   ElevatedButton.icon(
                     onPressed: _isLoading ? null : _pickAndParseFile,
                     icon: const Icon(Icons.file_upload),
-                    label: const Text('Select CSV / Excel File'),
+                    label: Text('Select CSV / Excel for $_importType'),
                   ),
                 ],
               ),
@@ -232,17 +343,25 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
           ),
           const SizedBox(height: 16),
           if (_previewData.isNotEmpty) ...[
-            Text('Preview (${_previewData.length} students)', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('Preview (${_previewData.length} $_importType)', style: const TextStyle(fontWeight: FontWeight.bold)),
             Expanded(
               child: ListView.builder(
                 itemCount: _previewData.length,
                 itemBuilder: (context, index) {
-                  final s = _previewData[index];
-                  return ListTile(
-                    title: Text(s['name']),
-                    subtitle: Text('${s['phone']} | ${s['batch']}'),
-                    dense: true,
-                  );
+                  final item = _previewData[index];
+                  if (_importType == 'Students') {
+                    return ListTile(
+                      title: Text(item['name']),
+                      subtitle: Text('${item['phone']} | ${item['board']} ${item['standard']}'),
+                      dense: true,
+                    );
+                  } else {
+                    return ListTile(
+                      title: Text(item['title']),
+                      subtitle: Text('Chapter: ${item['chapter_name']} | Order: ${item['order_index']}'),
+                      dense: true,
+                    );
+                  }
                 },
               ),
             ),

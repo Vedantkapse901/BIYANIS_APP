@@ -6,9 +6,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/role_selection_screen.dart';
 import 'features/auth/presentation/screens/super_admin_dashboard.dart';
 import 'features/student/presentation/screens/student_dashboard_screen.dart';
-import 'features/logbook/presentation/screens/teacher_dashboard_screen.dart';
-import 'features/logbook/data/datasources/local_datasource.dart';
-import 'core/utils/admin_utils.dart';
+import 'features/teacher/presentation/screens/teacher_dashboard_screen.dart';
 import 'core/widgets/biyani_logo.dart';
 import 'core/services/supabase_service.dart';
 
@@ -71,16 +69,6 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _initializeApp() async {
     try {
-      setState(() => _loadingStatus = 'Initializing Database...');
-      final localDataSource = LocalDataSource();
-      await localDataSource.initialize();
-      
-      setState(() => _loadingStatus = 'Setting up data...');
-      await localDataSource.seedMockData();
-
-      setState(() => _loadingStatus = 'Syncing Approved Students...');
-      await AdminUtils.syncFromGoogleSheets();
-
       setState(() => _loadingStatus = 'Checking user...');
       await _checkUserRole();
     } catch (e) {

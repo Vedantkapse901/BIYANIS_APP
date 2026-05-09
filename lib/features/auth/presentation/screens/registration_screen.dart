@@ -318,7 +318,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                       children: [
                         const Icon(Icons.book, size: 16, color: AppTheme.textSecondary),
                         const SizedBox(width: 8),
-                        Expanded(child: Text('Board: ${_foundStudent?['board']}', style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary))),
+                        Expanded(child: Text('Board: ${_foundStudent?['board']} Standard: ${_foundStudent?['standard'] ?? ""}', style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary))),
                       ],
                     ),
                   ),

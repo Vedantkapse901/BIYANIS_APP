@@ -1,60 +1,417 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 import '../../../../core/theme/app_theme.dart';
+import '../../../logbook/data/models/subject_model.dart';
+import '../../../logbook/data/models/task_model.dart';
+import '../../../logbook/data/models/chapter_model.dart';
+import '../../../logbook/data/datasources/remote_datasource.dart';
 import 'task_detail_screen.dart';
 
-class StudentDashboardScreen extends StatefulWidget {
+class StudentDashboardScreen extends ConsumerStatefulWidget {
   const StudentDashboardScreen({super.key});
 
   @override
-  State<StudentDashboardScreen> createState() => _StudentDashboardScreenState();
+  ConsumerState<StudentDashboardScreen> createState() => _StudentDashboardScreenState();
 }
 
-class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen> {
   int _selectedSubjectIndex = 0;
-  final Map<int, bool> _expandedChapters = {}; // Track which chapters are expanded
-  final Map<int, Set<int>> _completedTasks = {}; // Track completed tasks per chapter
-  final Map<int, int> _chapterCompletedCount = {}; // Track completed tasks count per chapter
+  final Map<String, bool> _expandedChapters = {}; // Track which chapters are expanded
+  final Map<String, Set<String>> _completedTasks = {}; // Track completed tasks per chapter
+  final Map<String, int> _chapterCompletedCount = {}; // Track completed tasks count per chapter
+  final Map<String, String> _chapterOrderIndexMap = {}; // Store original order_index text (preserves "3 (A)")
   final ScrollController _scrollController = ScrollController();
 
-  // Static subjects data
-  final List<Map<String, dynamic>> subjects = [
-    {
-      'id': 1,
-      'name': 'Mathematics',
-      'icon': '📐',
-      'color': Colors.blue,
-    },
-    {
-      'id': 2,
-      'name': 'Science',
-      'icon': '🔬',
-      'color': Colors.green,
-    },
-    {
-      'id': 3,
-      'name': 'English',
-      'icon': '📚',
-      'color': Colors.purple,
-    },
-    {
-      'id': 4,
-      'name': 'History',
-      'icon': '📜',
-      'color': Colors.orange,
-    },
-    {
-      'id': 5,
-      'name': 'Geography',
-      'icon': '🌍',
-      'color': Colors.teal,
-    },
-    {
-      'id': 6,
-      'name': 'Computer Science',
-      'icon': '💻',
-      'color': Colors.red,
-    },
-  ];
+  // Student details
+  String? _studentId;
+  String? _studentName;
+  String? _studentBatch;
+  String? _studentUUID;
+
+  // Subjects from Supabase
+  List<SubjectModel> _subjects = [];
+  bool _isLoadingSubjects = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudentDetails();
+  }
+
+  Future<void> _loadStudentDetails() async {
+    print('🔄 Loading student details from SharedPreferences...');
+    final prefs = await SharedPreferences.getInstance();
+    _studentId = prefs.getString('studentId');
+    _studentName = prefs.getString('name');
+    _studentUUID = prefs.getString('userId');
+
+    print('✅ Student ID: $_studentId');
+    print('✅ Student Name: $_studentName');
+    print('✅ Student UUID: $_studentUUID');
+
+    setState(() {});
+
+    // Load student details from database to get board + standard
+    if (_studentUUID != null) {
+      print('🔄 Fetching batch from database...');
+      await _loadBatchFromDatabase();
+    } else {
+      print('❌ No UUID in SharedPreferences');
+    }
+  }
+
+  Future<void> _loadBatchFromDatabase() async {
+    final studentId = _studentId;
+    if (studentId == null) {
+      print('❌ No student ID found');
+      return;
+    }
+
+    try {
+      print('🔍 Loading batch for student ID: $studentId');
+      final supabase = Supabase.instance.client;
+
+      // Get student record with board and standard using serial_id
+      final response = await supabase
+          .from('students')
+          .select('id, board, standard')
+          .eq('serial_id', studentId)
+          .maybeSingle();
+
+      print('📊 Batch response: $response');
+
+      if (response != null) {
+        final board = response['board'] ?? '';
+        final standard = response['standard'] ?? '';
+        // Store the actual student database ID for progress queries
+        final dbId = response['id'];
+
+        // Normalize batch: "icse 10th" -> "ICSE 10" or try both formats
+        String normalizedStandard = standard.replaceAll(RegExp(r'(st|nd|rd|th)$'), '');
+        String normalizedBatch = '${board.toUpperCase()} $normalizedStandard';
+
+        print('✅ Found batch: $board $standard');
+        print('✅ Normalized batch: $normalizedBatch, DB ID: $dbId');
+
+        setState(() {
+          _studentBatch = normalizedBatch; // e.g., "ICSE 10"
+        });
+
+        // Load subjects from Supabase
+        print('🔄 Loading subjects for batch: $_studentBatch');
+        await _loadSubjectsFromDatabase();
+
+        // Now load progress
+        print('🔄 Loading progress...');
+        await _loadProgressFromDatabase();
+      } else {
+        print('❌ No student record found for serial_id: $studentId');
+      }
+    } catch (e) {
+      print('❌ Error loading batch: $e');
+    }
+  }
+
+  Future<void> _loadSubjectsFromDatabase() async {
+    try {
+      // Check if batch is loaded
+      if (_studentBatch == null) {
+        print('❌ Student batch not loaded yet');
+        return;
+      }
+
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('🎓 STUDENT: $_studentName (ID: $_studentId)');
+      print('📚 BATCH: $_studentBatch');
+      print('🔄 Loading subjects with embedded tasks...');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      final supabase = Supabase.instance.client;
+      final batch = _studentBatch!; // Now guaranteed non-null
+
+      // Fetch all subjects for this batch
+      final subjectsResponse = await supabase
+          .from('subjects')
+          .select('id, name, color, icon')
+          .eq('batch', batch)
+          .timeout(const Duration(seconds: 30), onTimeout: () {
+            print('❌ Subject loading timed out after 30 seconds');
+            throw TimeoutException('Failed to load subjects');
+          });
+
+      List<SubjectModel> subjects = [];
+
+      for (var subject in subjectsResponse as List) {
+        final subjectId = subject['id'];
+        final subjectName = subject['name'];
+        final subjectColor = subject['color'] ?? '#5B5FDE';
+        final subjectIcon = subject['icon'] ?? '📚';
+
+        // Fetch chapters with embedded tasks for this subject
+        final chaptersResponse = await supabase
+            .from('chapters')
+            .select('id, chapter_name, order_index, task_1, task_2, task_3, task_4, task_5, task_6, task_7, task_8, task_9, task_10, task_11, task_12, task_13')
+            .eq('subject_id', subjectId)
+            .eq('batch', batch)
+            .order('order_index', ascending: true);
+
+        // Store original order_index text for display (preserves "3 (A)", "3 (B)", etc.)
+        _chapterOrderIndexMap.clear(); // Clear previous data
+
+        // Create chapter models from the response with embedded tasks
+        final chapters = (chaptersResponse as List).map((chapter) {
+          final chapterId = chapter['id'];
+          final orderIndexStr = chapter['order_index']?.toString() ?? '0';
+          final chapterTitle = chapter['chapter_name'];
+
+          // DEBUG: Log the order_index values
+          if (orderIndexStr.contains('(')) {
+            print('✅ Chapter: $chapterTitle → order_index: "$orderIndexStr"');
+          }
+
+          // Store original text for display
+          _chapterOrderIndexMap[chapterId] = orderIndexStr;
+
+          // Extract tasks from task_1 through task_13 columns
+          List<TaskModel> chapterTasks = [];
+          for (int i = 1; i <= 13; i++) {
+            final taskKey = 'task_$i';
+            final taskValue = chapter[taskKey];
+            if (taskValue != null && taskValue.toString().isNotEmpty) {
+              chapterTasks.add(
+                TaskModel(
+                  id: '${chapterId}_task_$i',
+                  title: taskValue.toString(),
+                  chapterId: chapterId,
+                  isCompleted: false, // Will be updated from progress data
+                  orderIndex: i,
+                ),
+              );
+            }
+          }
+
+          // Extract numeric part for sorting
+          final orderIndexInt = int.tryParse(orderIndexStr.split(' ').first) ?? 0;
+
+          return ChapterModel(
+            id: chapterId,
+            subjectId: subjectId,
+            title: chapter['chapter_name'],
+            orderIndex: orderIndexInt,
+            tasks: chapterTasks,
+          );
+        }).toList();
+
+        if (chapters.isNotEmpty) {
+          // Sort chapters by order_index (numeric sort for "1", "2", "3 (A)", "3 (B)")
+          chapters.sort((a, b) {
+            // Extract numeric part from stored original text
+            int aNum = int.tryParse(_chapterOrderIndexMap[a.id]?.split(' ').first ?? '0') ?? 0;
+            int bNum = int.tryParse(_chapterOrderIndexMap[b.id]?.split(' ').first ?? '0') ?? 0;
+
+            if (aNum != bNum) {
+              return aNum.compareTo(bNum);
+            }
+
+            // If same number, sort by suffix (A comes before B)
+            final aText = _chapterOrderIndexMap[a.id] ?? '0';
+            final bText = _chapterOrderIndexMap[b.id] ?? '0';
+            return aText.compareTo(bText);
+          });
+
+          subjects.add(
+            SubjectModel(
+              id: subjectId,
+              name: subjectName,
+              color: subjectColor,
+              icon: subjectIcon,
+              chapters: chapters,
+              batch: batch,
+            ),
+          );
+        }
+      }
+
+      // Sort subjects in the correct order
+      final subjectOrder = [
+        'PHYSICS',
+        'CHEMISTRY',
+        'MATHEMATICS',
+        'BIOLOGY',
+        'ENGLISH LITERATURE',
+        'ENGLISH LANGUAGE',
+        'HINDI',
+        'COMPUTER APPLICATIONS',
+        'CIVICS',
+        'HISTORY',
+        'GEOGRAPHY',
+        'ECONOMICS',
+      ];
+
+      subjects.sort((a, b) {
+        final indexA = subjectOrder.indexWhere((s) => a.name.toUpperCase().contains(s));
+        final indexB = subjectOrder.indexWhere((s) => b.name.toUpperCase().contains(s));
+
+        if (indexA == -1) return 1;
+        if (indexB == -1) return -1;
+        return indexA.compareTo(indexB);
+      });
+
+      print('✅ Loaded ${subjects.length} subjects (sorted)');
+      for (var i = 0; i < subjects.length; i++) {
+        print('   ${i + 1}. ${subjects[i].name} (${subjects[i].chapters?.length ?? 0} chapters)');
+      }
+
+      setState(() {
+        _subjects = subjects;
+        _isLoadingSubjects = false;
+      });
+
+      // Then load progress asynchronously
+      unawaited(_loadProgressFromDatabase());
+    } catch (e) {
+      print('❌ Error loading subjects: $e');
+      setState(() => _isLoadingSubjects = false);
+    }
+  }
+
+  Future<void> _loadProgressFromDatabase() async {
+    final studentId = _studentId;
+    if (studentId == null) return;
+
+    try {
+      final supabase = Supabase.instance.client;
+
+      print('🔄 Loading progress for student ID: $studentId');
+
+      // Get student database ID from students table
+      final studentResponse = await supabase
+          .from('students')
+          .select('id')
+          .eq('serial_id', studentId)
+          .maybeSingle();
+
+      print('📊 Student record: $studentResponse');
+
+      if (studentResponse != null) {
+        final studentDbId = studentResponse['id'];
+        print('✅ Found student DB ID: $studentDbId');
+
+        try {
+          // Load all progress for this student (chapter_id and task_id based)
+          final progressList = await supabase
+              .from('student_progress')
+              .select('chapter_id, task_id, is_completed')
+              .eq('student_id', studentDbId)
+              .eq('is_completed', true);
+
+          print('📊 Loaded ${progressList.length} completed tasks');
+
+          if (progressList.isEmpty) {
+            print('⚠️ No progress records found for student: $studentDbId');
+          }
+
+          setState(() {
+            _completedTasks.clear();
+            _chapterCompletedCount.clear();
+
+            for (var item in progressList) {
+              final chapterId = item['chapter_id'] as String?;
+              final taskId = item['task_id'] as String?;
+
+              print('   📌 Raw item: $item');
+
+              if (chapterId != null && taskId != null) {
+                print('   ✓ Loading: Chapter=$chapterId, Task=$taskId');
+
+                if (!_completedTasks.containsKey(chapterId)) {
+                  _completedTasks[chapterId] = {};
+                }
+                _completedTasks[chapterId]!.add(taskId);
+
+                _chapterCompletedCount[chapterId] =
+                    (_chapterCompletedCount[chapterId] ?? 0) + 1;
+              } else {
+                print('   ❌ Null values: chapter=$chapterId, task=$taskId');
+              }
+            }
+
+            print('✅ Progress loaded: ${_chapterCompletedCount.length} chapters with progress');
+          });
+        } catch (e) {
+          print('❌ Error loading progress: $e');
+        }
+      } else {
+        print('❌ No student record found for serial_id: $studentId');
+      }
+    } catch (e) {
+      print('❌ Error loading progress: $e');
+    }
+  }
+
+  Future<void> _markTaskComplete(String chapterId, String taskId) async {
+    // Students can mark tasks complete
+    // Teachers cannot (view-only)
+    final studentId = _studentId;
+    if (studentId == null) return;
+
+    try {
+      final supabase = Supabase.instance.client;
+      final studentResponse = await supabase
+          .from('students')
+          .select('id')
+          .eq('serial_id', studentId)
+          .maybeSingle();
+
+      if (studentResponse != null) {
+        final studentDbId = studentResponse['id'];
+
+        print('📝 Marking task complete:');
+        print('   Student: $studentDbId');
+        print('   Chapter: $chapterId');
+        print('   Task: $taskId');
+
+        try {
+          // Use upsert to handle both insert and update
+          final response = await supabase.from('student_progress').upsert(
+            {
+              'student_id': studentDbId,
+              'chapter_id': chapterId,
+              'task_id': taskId,
+              'is_completed': true,
+              'completed_at': DateTime.now().toIso8601String(),
+            },
+            onConflict: 'student_id,chapter_id,task_id',
+          );
+          print('✅ Task saved successfully');
+          print('   Response: $response');
+        } catch (e) {
+          print('❌ Failed to save task: $e');
+          print('   Details: student_id=$studentDbId, chapter_id=$chapterId, task_id=$taskId');
+          rethrow;
+        }
+
+        setState(() {
+          if (!_completedTasks.containsKey(chapterId)) {
+            _completedTasks[chapterId] = {};
+          }
+          _completedTasks[chapterId]!.add(taskId);
+          _chapterCompletedCount[chapterId] =
+              (_chapterCompletedCount[chapterId] ?? 0) + 1;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Task completed!'), duration: Duration(seconds: 1)),
+        );
+      }
+    } catch (e) {
+      print('❌ Error marking task complete: $e');
+    }
+  }
+
 
   @override
   void dispose() {
@@ -62,90 +419,98 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     super.dispose();
   }
 
-  List<Map<String, dynamic>> _getChaptersForSubject(int subjectId) {
-    final allChapters = {
-      1: [ // Mathematics
-        {'id': 1, 'name': 'Chapter 1: Numbers', 'icon': '1️⃣', 'completed': 5, 'total': 8},
-        {'id': 2, 'name': 'Chapter 2: Algebra', 'icon': '🔤', 'completed': 2, 'total': 6},
-        {'id': 3, 'name': 'Chapter 3: Geometry', 'icon': '📐', 'completed': 0, 'total': 5},
-        {'id': 4, 'name': 'Chapter 4: Trigonometry', 'icon': '📊', 'completed': 1, 'total': 7},
-      ],
-      2: [ // Science
-        {'id': 5, 'name': 'Chapter 1: Physics', 'icon': '⚛️', 'completed': 3, 'total': 17},
-        {'id': 6, 'name': 'Chapter 2: Chemistry', 'icon': '🧪', 'completed': 4, 'total': 15},
-        {'id': 7, 'name': 'Chapter 3: Biology', 'icon': '🧬', 'completed': 2, 'total': 12},
-      ],
-      3: [ // English
-        {'id': 8, 'name': 'Chapter 1: Grammar', 'icon': '📝', 'completed': 6, 'total': 10},
-        {'id': 9, 'name': 'Chapter 2: Literature', 'icon': '📖', 'completed': 4, 'total': 8},
-        {'id': 10, 'name': 'Chapter 3: Comprehension', 'icon': '🤔', 'completed': 3, 'total': 6},
-      ],
-      4: [ // History
-        {'id': 11, 'name': 'Chapter 1: Ancient History', 'icon': '🏛️', 'completed': 7, 'total': 9},
-        {'id': 12, 'name': 'Chapter 2: Medieval Period', 'icon': '🏰', 'completed': 5, 'total': 10},
-        {'id': 13, 'name': 'Chapter 3: Modern Era', 'icon': '🌐', 'completed': 2, 'total': 8},
-      ],
-      5: [ // Geography
-        {'id': 14, 'name': 'Chapter 1: World Maps', 'icon': '🗺️', 'completed': 8, 'total': 10},
-        {'id': 15, 'name': 'Chapter 2: Continents', 'icon': '🌎', 'completed': 6, 'total': 9},
-        {'id': 16, 'name': 'Chapter 3: Climate', 'icon': '🌤️', 'completed': 4, 'total': 7},
-      ],
-      6: [ // Computer Science
-        {'id': 17, 'name': 'Chapter 1: Programming', 'icon': '💻', 'completed': 5, 'total': 11},
-        {'id': 18, 'name': 'Chapter 2: Data Structures', 'icon': '📊', 'completed': 3, 'total': 9},
-        {'id': 19, 'name': 'Chapter 3: Networks', 'icon': '🌐', 'completed': 1, 'total': 6},
-      ],
-    };
-    return allChapters[subjectId] ?? [];
-  }
-
-  List<Map<String, dynamic>> _getTasksForChapter(int chapterId) {
-    return [
-      {
-        'id': 1,
-        'title': 'Task 1: Introduction',
-        'description': 'Learn the basics of this chapter',
-        'type': 'Reading',
-        'icon': '📖',
-        'content': 'This is the introduction to the chapter.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
-      },
-      {
-        'id': 2,
-        'title': 'Task 2: Concepts',
-        'description': 'Understand key concepts',
-        'type': 'Learning',
-        'icon': '💡',
-        'content': 'Key concepts in this chapter:\n\n1. Concept A - Explanation\n2. Concept B - Explanation\n3. Concept C - Explanation',
-      },
-      {
-        'id': 3,
-        'title': 'Task 3: Practice Problems',
-        'description': 'Solve practice problems',
-        'type': 'Exercise',
-        'icon': '✏️',
-        'content': 'Practice Problems:\n\n1. Problem 1 - Solution A\n2. Problem 2 - Solution B\n3. Problem 3 - Solution C\n\nTry solving these problems to test your understanding.',
-      },
-    ];
-  }
-
   int _getTotalBacklog() {
     int total = 0;
-    for (var subject in subjects) {
-      final chapters = _getChaptersForSubject(subject['id']);
+    for (var subject in _subjects) {
+      final chapters = subject.chapters ?? [];
       for (var chapter in chapters) {
-        final chapterId = chapter['id'] as int;
-        final tasks = _getTasksForChapter(chapterId);
+        final chapterId = chapter.id;
+        final tasks = chapter.tasks ?? [];
         final completed = _chapterCompletedCount[chapterId] ?? 0;
-        total += (tasks.length - completed); // Use actual task count
+        total += (tasks.length - completed);
       }
     }
     return total;
   }
 
+  Color _parseSubjectColor(String colorValue) {
+    if (colorValue.isEmpty) {
+      return AppTheme.primary;
+    }
+
+    try {
+      // Handle named colors
+      final colorName = colorValue.toLowerCase().trim();
+
+      switch (colorName) {
+        case 'blue':
+          return Colors.blue;
+        case 'red':
+          return Colors.red;
+        case 'green':
+          return Colors.green;
+        case 'purple':
+          return Colors.purple;
+        case 'orange':
+          return Colors.orange;
+        case 'pink':
+          return Colors.pink;
+        case 'cyan':
+          return Colors.cyan;
+        case 'amber':
+          return Colors.amber;
+        case 'teal':
+          return Colors.teal;
+        case 'indigo':
+          return Colors.indigo;
+        case 'lime':
+          return Colors.lime;
+        case 'yellow':
+          return Colors.yellow;
+        case 'brown':
+          return Colors.brown;
+        case 'grey':
+        case 'gray':
+          return Colors.grey;
+        default:
+          // Try to parse as hex code
+          if (colorValue.isNotEmpty && (colorValue.contains('#') || colorValue.replaceAll('#', '').length == 6)) {
+            try {
+              final hex = colorValue.replaceAll('#', '').replaceAll('0x', '').replaceAll('0X', '');
+              if (hex.length == 6 && int.tryParse(hex, radix: 16) != null) {
+                return Color(int.parse('0xFF$hex', radix: 16));
+              }
+            } catch (e) {
+              // Silently ignore parsing errors
+            }
+          }
+          return AppTheme.primary;
+      }
+    } catch (e) {
+      print('⚠️ Failed to parse color "$colorValue": $e');
+      return AppTheme.primary;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final selectedSubject = subjects[_selectedSubjectIndex];
-    final chapters = _getChaptersForSubject(selectedSubject['id']);
+    // Show loading if subjects are still being fetched
+    if (_isLoadingSubjects || _subjects.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('LOG BOOK'),
+          backgroundColor: AppTheme.primary,
+        ),
+        body: Center(
+          child: _subjects.isEmpty && !_isLoadingSubjects
+              ? const Text('No subjects available for your batch')
+              : const CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final selectedSubject = _subjects[_selectedSubjectIndex];
+    final chapters = selectedSubject.chapters ?? [];
 
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
@@ -167,16 +532,86 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Student Details Card
+            Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.primary.withOpacity(0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '👤 Student Profile',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _studentName ?? 'Loading...',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.badge,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'ID: ${_studentId ?? 'N/A'}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Icon(
+                        Icons.book,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _studentBatch ?? 'N/A',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+
             // Subject Tabs
             SizedBox(
               height: 60,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                itemCount: subjects.length,
+                itemCount: _subjects.length,
                 itemBuilder: (context, index) {
-                  final subject = subjects[index];
+                  final subject = _subjects[index];
                   final isSelected = _selectedSubjectIndex == index;
+                  final color = _parseSubjectColor(subject.color);
+                  print('🎨 Subject ${subject.name} color: "${subject.color}" → $color');
+
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: GestureDetector(
@@ -186,23 +621,25 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                         });
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: isSelected ? subject['color'] : Colors.white,
+                          color: isSelected ? color : Colors.white,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: subject['color'],
+                            color: color,
                             width: isSelected ? 0 : 1,
                           ),
                         ),
                         child: Center(
                           child: Text(
-                            subject['name'],
+                            subject.name,
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: isSelected ? Colors.white : subject['color'],
+                              color: isSelected ? Colors.white : color,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
@@ -213,14 +650,14 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             ),
             const SizedBox(height: 8),
 
-            // Subject Info
+            // Subject Info with Overall Progress
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'CSE Grade 10 • 2025-26',
+                    'ICSE Grade 10 • 2025-26',
                     style: TextStyle(
                       fontSize: 13,
                       color: Colors.grey.shade600,
@@ -228,28 +665,95 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Overall Progress
-                  Text(
-                    '${selectedSubject['name']} Progress',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  // Subject name with overall progress
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${selectedSubject.name} Progress',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      // Calculate overall subject progress
+                      Builder(
+                        builder: (context) {
+                          int totalTasks = 0;
+                          int completedTasks = 0;
+                          for (var chapter in chapters) {
+                            final tasks = chapter.tasks ?? [];
+                            totalTasks += tasks.length;
+                            completedTasks += _chapterCompletedCount[chapter.id] ?? 0;
+                          }
+                          final percentage = totalTasks > 0 ? (completedTasks * 100 ~/ totalTasks) : 0;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '$completedTasks/$totalTasks tasks',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _parseSubjectColor(selectedSubject.color),
+                                ),
+                              ),
+                              Text(
+                                '$percentage%',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: _parseSubjectColor(selectedSubject.color),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
 
-                  // Calculate overall progress for subject
-                  _buildSubjectProgress(chapters),
-
+                  // Overall progress bar for subject
+                  Builder(
+                    builder: (context) {
+                      int totalTasks = 0;
+                      int completedTasks = 0;
+                      for (var chapter in chapters) {
+                        final tasks = chapter.tasks ?? [];
+                        totalTasks += tasks.length;
+                        completedTasks += _chapterCompletedCount[chapter.id] ?? 0;
+                      }
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: totalTasks > 0 ? completedTasks / totalTasks : 0,
+                          minHeight: 8,
+                          backgroundColor: Colors.grey.shade300,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _parseSubjectColor(selectedSubject.color),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                   const SizedBox(height: 24),
 
                   // Chapters List
-                  ...chapters.asMap().entries.map((entry) {
-                    final chapter = entry.value;
-                    final chapterId = chapter['id'] as int;
+                  ...chapters.map((chapter) {
+                    final chapterId = chapter.id;
                     final isExpanded = _expandedChapters[chapterId] ?? false;
-                    final tasks = _getTasksForChapter(chapterId);
-                    final totalTasks = tasks.length; // Actual tasks assigned
+                    final tasks = chapter.tasks ?? [];
+                    final totalTasks = tasks.length;
+                    final subjectColor = _parseSubjectColor(selectedSubject.color);
+
+                    // Get the original order_index text (preserves "3 (A)", "3 (B)")
+                    final orderIndexDisplay = _chapterOrderIndexMap[chapterId] ?? chapter.orderIndex?.toString() ?? '0';
+
+                    // DEBUG: Log display value
+                    if (orderIndexDisplay.contains('(')) {
+                      print('🎯 DISPLAY: ${chapter.title} → "$orderIndexDisplay"');
+                    }
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -258,7 +762,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                           side: BorderSide(
-                            color: selectedSubject['color'].withOpacity(0.2),
+                            color: subjectColor.withOpacity(0.2),
                           ),
                         ),
                         child: Padding(
@@ -275,32 +779,63 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                 },
                                 child: Row(
                                   children: [
-                                    Text(
-                                      chapter['icon'],
-                                      style: const TextStyle(fontSize: 24),
+                                    // Order Index in a badge (preserves "3 (A)", "3 (B)" format)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: subjectColor.withOpacity(0.2),
+                                        border: Border.all(
+                                          color: subjectColor,
+                                          width: 2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          orderIndexDisplay,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: subjectColor,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        chapter['name'],
+                                        chapter.title,
                                         style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
-                                    Text(
-                                      '${_chapterCompletedCount[chapterId] ?? 0}/$totalTasks',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: selectedSubject['color'],
-                                      ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          '${_chapterCompletedCount[chapterId] ?? 0}/$totalTasks',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: subjectColor,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${totalTasks > 0 ? ((_chapterCompletedCount[chapterId] ?? 0) * 100 ~/ totalTasks) : 0}%',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w500,
+                                            color: subjectColor.withOpacity(0.7),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     const SizedBox(width: 12),
                                     Icon(
                                       isExpanded ? Icons.expand_less : Icons.expand_more,
-                                      color: selectedSubject['color'],
+                                      color: subjectColor,
                                     ),
                                   ],
                                 ),
@@ -309,11 +844,11 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(4),
                                 child: LinearProgressIndicator(
-                                  value: (_chapterCompletedCount[chapterId] ?? 0) / totalTasks,
+                                  value: totalTasks > 0 ? (_chapterCompletedCount[chapterId] ?? 0) / totalTasks : 0,
                                   minHeight: 6,
                                   backgroundColor: Colors.grey.shade300,
                                   valueColor: AlwaysStoppedAnimation<Color>(
-                                    selectedSubject['color'],
+                                    subjectColor,
                                   ),
                                 ),
                               ),
@@ -331,25 +866,16 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                ...tasks.asMap().entries.map((taskEntry) {
-                                  final task = taskEntry.value;
-                                  final taskId = taskEntry.key;
+                                ...tasks.map((task) {
+                                  final taskId = task.id;
                                   final isCompleted = (_completedTasks[chapterId] ?? {}).contains(taskId);
 
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: GestureDetector(
                                       onTap: () {
-                                        setState(() {
-                                          if (_completedTasks[chapterId] == null) {
-                                            _completedTasks[chapterId] = {};
-                                          }
-                                          if (isCompleted) {
-                                            _completedTasks[chapterId]!.remove(taskId);
-                                          } else {
-                                            _completedTasks[chapterId]!.add(taskId);
-                                          }
-                                        });
+                                        // Mark task complete and save to database
+                                        _markTaskComplete(chapterId, taskId);
                                       },
                                       child: Row(
                                         children: [
@@ -359,10 +885,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                             decoration: BoxDecoration(
                                               shape: BoxShape.circle,
                                               border: Border.all(
-                                                color: isCompleted ? selectedSubject['color'] : Colors.grey.shade400,
+                                                color: isCompleted ? subjectColor : Colors.grey.shade400,
                                                 width: 2,
                                               ),
-                                              color: isCompleted ? selectedSubject['color'] : Colors.transparent,
+                                              color: isCompleted ? subjectColor : Colors.transparent,
                                             ),
                                             child: isCompleted
                                                 ? const Icon(
@@ -375,7 +901,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                           const SizedBox(width: 12),
                                           Expanded(
                                             child: Text(
-                                              task['title'],
+                                              task.title,
                                               style: TextStyle(
                                                 fontSize: 13,
                                                 decoration: isCompleted ? TextDecoration.lineThrough : null,
@@ -410,12 +936,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                         SnackBar(
                                           content: Text('$completed/${tasks.length} tasks submitted! ✓'),
                                           duration: const Duration(seconds: 2),
-                                          backgroundColor: selectedSubject['color'],
+                                          backgroundColor: subjectColor,
                                         ),
                                       );
                                     },
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: selectedSubject['color'],
+                                      backgroundColor: subjectColor,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(8),
                                       ),
@@ -496,195 +1022,4 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  Widget _buildSubjectProgress(List<Map<String, dynamic>> chapters) {
-    int totalCompleted = 0;
-    int totalTasks = 0;
-
-    for (var chapter in chapters) {
-      final chapterId = chapter['id'] as int;
-      final tasks = _getTasksForChapter(chapterId);
-      totalCompleted += _chapterCompletedCount[chapterId] ?? 0;
-      totalTasks += tasks.length; // Use actual task count, not chapter['total']
-    }
-
-    final percentage = totalTasks > 0 ? (totalCompleted / totalTasks * 100).toStringAsFixed(0) : 0;
-    final selectedSubject = subjects[_selectedSubjectIndex];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '$percentage%',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: selectedSubject['color'],
-              ),
-            ),
-            Text(
-              '$totalCompleted of $totalTasks tasks completed',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: LinearProgressIndicator(
-            value: totalCompleted / (totalTasks > 0 ? totalTasks : 1),
-            minHeight: 8,
-            backgroundColor: Colors.grey.shade300,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              selectedSubject['color'],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showChapterDetails(BuildContext context, Map<String, dynamic> chapter) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        final tasks = _getTasksForChapter(chapter['id']);
-        return DraggableScrollableSheet(
-          expand: false,
-          builder: (context, scrollController) {
-            return SingleChildScrollView(
-              controller: scrollController,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Text(
-                          chapter['icon'],
-                          style: const TextStyle(fontSize: 32),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                chapter['name'],
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${chapter['completed']}/${chapter['total']} tasks completed',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Tasks',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ...tasks.map((task) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => TaskDetailScreen(task: task),
-                              ),
-                            );
-                          },
-                          child: Card(
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              side: BorderSide(
-                                color: Colors.grey.shade200,
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    task['icon'],
-                                    style: const TextStyle(fontSize: 20),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          task['title'],
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          task['type'],
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(Icons.arrow_forward_ios, size: 16),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
 }

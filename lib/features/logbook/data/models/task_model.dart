@@ -9,7 +9,7 @@ class TaskModel extends HiveObject {
   String id;
 
   @HiveField(1)
-  String topicId;
+  String? chapterId;
 
   @HiveField(2)
   String title;
@@ -20,9 +20,13 @@ class TaskModel extends HiveObject {
   @HiveField(4)
   int orderIndex;
 
+  @HiveField(5)
+  String? chapterName;
+
   TaskModel({
     required this.id,
-    required this.topicId,
+    this.chapterId,
+    this.chapterName,
     required this.title,
     required this.isCompleted,
     this.orderIndex = 0,
@@ -38,7 +42,8 @@ class TaskModel extends HiveObject {
 
     return TaskModel(
       id: json['id'],
-      topicId: json['topic_id'] ?? '',
+      chapterId: json['chapter_id'],
+      chapterName: json['chapter_name'],
       title: json['title'],
       isCompleted: completed,
       orderIndex: json['order_index'] ?? 0,
@@ -48,7 +53,8 @@ class TaskModel extends HiveObject {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'topic_id': topicId,
+      'chapter_id': chapterId,
+      'chapter_name': chapterName,
       'title': title,
       'is_completed': isCompleted,
       'order_index': orderIndex,
@@ -58,7 +64,8 @@ class TaskModel extends HiveObject {
   TaskEntity toEntity() {
     return TaskEntity(
       id: id,
-      topicId: topicId,
+      chapterId: chapterId,
+      chapterName: chapterName,
       title: title,
       isCompleted: isCompleted,
       orderIndex: orderIndex,
@@ -68,7 +75,8 @@ class TaskModel extends HiveObject {
   factory TaskModel.fromEntity(TaskEntity entity) {
     return TaskModel(
       id: entity.id,
-      topicId: entity.topicId,
+      chapterId: entity.chapterId,
+      chapterName: entity.chapterName,
       title: entity.title,
       isCompleted: entity.isCompleted,
       orderIndex: entity.orderIndex,

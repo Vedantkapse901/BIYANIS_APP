@@ -156,13 +156,56 @@ class AuthRepository {
 
             // Save student details
             await prefs.setString('name', student['name'] ?? '');
-            await prefs.setString('batch', student['batch'] ?? '');
+            final studentBatch = '${student['board'] ?? ''} ${student['standard'] ?? ''}'.trim();
+            await prefs.setString('batch', studentBatch);
             if (student['branch'] != null) {
               await prefs.setString('branch', student['branch']);
             }
 
             return userData;
           }
+        }
+        return null;
+      }
+
+      // For TEACHER login - use username with batch isolation
+      if (role == 'teacher') {
+        // Get teacher by username
+        final teacher = await _supabase
+            .from('profiles')
+            .select()
+            .eq('username', username)
+            .eq('role', 'teacher')
+            .maybeSingle();
+
+        if (teacher == null) {
+          return null;
+        }
+
+        final email = teacher['email'];
+
+        // Authenticate with Supabase Auth
+        final authResponse = await _supabase.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+
+        if (authResponse.user != null) {
+          final userData = Map<String, dynamic>.from(teacher);
+
+          // Save session
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('userRole', role);
+          await prefs.setString('username', username);
+          await prefs.setString('name', teacher['name'] ?? '');
+          await prefs.setString('userId', authResponse.user!.id);
+          await prefs.setString('batch', teacher['batch'] ?? '');
+          await prefs.setString('branch', teacher['branch'] ?? '');
+          if (teacher['email'] != null) {
+            await prefs.setString('email', teacher['email']);
+          }
+
+          return userData;
         }
         return null;
       }

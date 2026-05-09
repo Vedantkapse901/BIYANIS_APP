@@ -1,0 +1,90 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    TASK-CHAPTER ID MISMATCH - QUICK FIX                    ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+PROBLEM:
+  • 2,114 tasks have BROKEN chapter_id values
+  • These IDs don't exist in chapters table
+  • Tasks won't load in app
+
+SOLUTION:
+  Delete broken tasks → Re-import with correct IDs from CSV
+
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 1: BACKUP
+─────────────────────────────────────────────────────────────────────────────
+Copy & paste into Supabase SQL Editor:
+
+CREATE TABLE tasks_backup_all AS SELECT * FROM tasks;
+SELECT COUNT(*) FROM tasks_backup_all;  -- Should show 2114+
+
+
+STEP 2: DELETE BROKEN TASKS
+─────────────────────────────────────────────────────────────────────────────
+DELETE FROM tasks WHERE chapter_id NOT IN (SELECT id FROM chapters);
+SELECT COUNT(*) FROM tasks;  -- Should show 0
+
+
+STEP 3: RE-IMPORT WITH CORRECT IDs
+─────────────────────────────────────────────────────────────────────────────
+📁 Open file: tasks_insert.sql
+📋 Copy ALL content
+✏️ Paste into Supabase SQL Editor
+▶️ Run/Execute
+
+
+STEP 4: VERIFY FIX
+─────────────────────────────────────────────────────────────────────────────
+SELECT COUNT(*) FROM tasks;
+-- Should show: 1062
+
+SELECT COUNT(*) FROM tasks t
+LEFT JOIN chapters c ON t.chapter_id = c.id
+WHERE c.id IS NULL;
+-- Should show: 0 (no broken tasks)
+
+
+STEP 5: TEST APP
+─────────────────────────────────────────────────────────────────────────────
+✓ Subjects load
+✓ Chapters expand
+✓ Tasks appear
+✓ App loads in 3-5 seconds
+
+═══════════════════════════════════════════════════════════════════════════════
+
+EXPECTED RESULT:
+
+  Physics:        12 chapters,  101 tasks ✓
+  Chemistry:       9 chapters,   68 tasks ✓
+  Maths:          23 chapters,  252 tasks ✓
+  Biology:        16 chapters,  135 tasks ✓
+  Language:       16 chapters,   96 tasks ✓
+  History:        15 chapters,  105 tasks ✓
+  Civics:          5 chapters,   35 tasks ✓
+  Geography:      18 chapters,  126 tasks ✓
+  CS:             15 chapters,   60 tasks ✓
+  Economics:      14 chapters,   84 tasks ✓
+  ───────────────────────────────────────
+  TOTAL:         167 chapters, 1062 tasks ✓
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILES GENERATED:
+  ✓ tasks_insert.sql              - Ready-to-run SQL import
+  ✓ mapping.json                  - CSV structure (Subject→Chapter→Tasks)
+  ✓ COMPLETE_TASK_FIX_GUIDE.md    - Detailed guide with verification
+  ✓ FIX_TASKS_SQL.md              - SQL instructions
+  ✓ QUICK_FIX_STEPS.txt           - This file
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ROLLBACK (If needed):
+  TRUNCATE TABLE tasks;
+  INSERT INTO tasks SELECT * FROM tasks_backup_all;
+  SELECT COUNT(*) FROM tasks;
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Ready? Let's fix it! 🚀

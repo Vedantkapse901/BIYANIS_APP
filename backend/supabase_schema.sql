@@ -79,10 +79,12 @@ CREATE TABLE IF NOT EXISTS public.topics (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
 
--- 5. TASKS TABLE (The 13 COLUMNS in your Excel sheet for each topic row)
+-- 5. TASKS TABLE (Can be linked to Topics OR directly to Chapters)
 CREATE TABLE IF NOT EXISTS public.tasks (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    topic_id UUID REFERENCES public.topics(id) ON DELETE CASCADE NOT NULL,
+    topic_id UUID REFERENCES public.topics(id) ON DELETE CASCADE, -- Optional if linked to chapter
+    chapter_id UUID REFERENCES public.chapters(id) ON DELETE CASCADE, -- Direct link to chapter
+    chapter_name TEXT, -- Helping for CSV imports and direct fetching
     title TEXT NOT NULL, -- e.g. 'TEXTBOOK READING', 'Task 13'
     order_index INT NOT NULL, -- 1 to 13
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,

@@ -1,13 +1,15 @@
 class TaskEntity {
   final String id;
-  final String topicId;
+  final String? chapterId;
+  final String? chapterName;
   final String title;
   final bool isCompleted;
   final int orderIndex;
 
   TaskEntity({
     required this.id,
-    required this.topicId,
+    this.chapterId,
+    this.chapterName,
     required this.title,
     required this.isCompleted,
     this.orderIndex = 0,
@@ -15,14 +17,16 @@ class TaskEntity {
 
   TaskEntity copyWith({
     String? id,
-    String? topicId,
+    String? chapterId,
+    String? chapterName,
     String? title,
     bool? isCompleted,
     int? orderIndex,
   }) {
     return TaskEntity(
       id: id ?? this.id,
-      topicId: topicId ?? this.topicId,
+      chapterId: chapterId ?? this.chapterId,
+      chapterName: chapterName ?? this.chapterName,
       title: title ?? this.title,
       isCompleted: isCompleted ?? this.isCompleted,
       orderIndex: orderIndex ?? this.orderIndex,

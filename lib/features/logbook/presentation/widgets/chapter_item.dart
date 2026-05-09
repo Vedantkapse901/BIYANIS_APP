@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/topic_entity.dart';
+import '../../data/models/task_model.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../providers/logbook_providers.dart';
 import 'task_checkbox_item.dart';
@@ -11,6 +12,7 @@ class ChapterItem extends StatefulWidget {
   final String title;
   final double progress;
   final List<TopicEntity>? topics;
+  final List<TaskModel>? tasks;
 
   const ChapterItem({
     super.key,
@@ -19,6 +21,7 @@ class ChapterItem extends StatefulWidget {
     required this.title,
     required this.progress,
     this.topics,
+    this.tasks,
   });
 
   @override
@@ -71,15 +74,48 @@ class _ChapterItemState extends State<ChapterItem> {
               ],
             ),
           ),
-          if (_isExpanded && widget.topics != null)
+          if (_isExpanded)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
               child: Column(
-                children: widget.topics!.map((topic) => _buildTopicRow(topic)).toList(),
+                children: [
+                  if (widget.tasks != null && widget.tasks!.isNotEmpty)
+                    _buildTasksList(widget.tasks!),
+                  if (widget.topics != null && widget.topics!.isNotEmpty)
+                    ...widget.topics!.map((topic) => _buildTopicRow(topic)).toList(),
+                ],
               ),
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTasksList(List<TaskModel> tasks) {
+    final sortedTasks = [...tasks]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+          child: Text(
+            'Tasks',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+        ),
+        ...sortedTasks.map((task) {
+          return TaskCheckboxItem(
+            subjectId: widget.subjectId,
+            chapterId: widget.chapterId,
+            topicId: widget.chapterId, // Use chapterId as topicId for compatibility
+            taskId: task.id,
+            title: task.title,
+            isCompleted: task.isCompleted,
+          );
+        }).toList(),
+        const Divider(height: 12, thickness: 0.5),
+      ],
     );
   }
 
@@ -145,12 +181,7 @@ class CompactTaskCheckbox extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return InkWell(
       onTap: () {
-        ref.read(toggleTopicProvider.notifier).toggleTask(
-          subjectId: subjectId,
-          chapterId: chapterId,
-          topicId: topicId,
-          taskId: taskId,
-        );
+        ref.read(taskCompletionProvider(taskId).notifier).toggleCompletion(!isCompleted);
       },
       child: Container(
         width: 24,

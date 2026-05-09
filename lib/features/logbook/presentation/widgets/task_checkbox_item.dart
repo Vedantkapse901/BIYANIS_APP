@@ -44,21 +44,13 @@ class _TaskCheckboxItemState extends ConsumerState<TaskCheckboxItem> {
 
   void _toggleTask() {
     setState(() => _currentValue = !_currentValue);
-    ref.read(toggleTopicProvider.notifier).toggleTask(
-      subjectId: widget.subjectId,
-      chapterId: widget.chapterId,
-      topicId: widget.topicId,
-      taskId: widget.taskId,
-    );
+    ref.read(taskCompletionProvider(widget.taskId).notifier).toggleCompletion(!widget.isCompleted);
   }
 
   @override
   Widget build(BuildContext context) {
-    final roleAsync = ref.watch(userRoleProvider);
-    final canToggle = roleAsync.maybeWhen(
-      data: (role) => role == 'student',
-      orElse: () => false, // Default to false while loading to prevent accidental edits
-    );
+    // Allow all users to toggle tasks (you can add role check if needed)
+    const canToggle = true;
 
     return InkWell(
       onTap: canToggle ? _toggleTask : null,

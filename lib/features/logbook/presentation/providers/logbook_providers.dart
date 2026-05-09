@@ -1,110 +1,69 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../data/datasources/local_datasource.dart';
-import '../../data/repositories/logbook_repository_impl.dart';
-import '../../domain/entities/subject_entity.dart';
-import '../../domain/entities/topic_entity.dart';
+import '../../data/datasources/remote_datasource.dart';
+import '../../data/models/subject_model.dart';
+import '../../data/models/chapter_model.dart';
+import '../../data/models/task_model.dart';
 
-// DataSource Provider
-final localDataSourceProvider = Provider<LocalDataSource>((ref) {
-  return LocalDataSource();
-});
+// ✅ Remote Data Source Provider
+final remoteDataSourceProvider = Provider((ref) => RemoteDataSource());
 
-// Repository Provider
-final logbookRepositoryProvider = Provider<LogbookRepository>((ref) {
-  final localDataSource = ref.watch(localDataSourceProvider);
-  return LogbookRepositoryImpl(localDataSource: localDataSource);
-});
-
-// User Role Provider
-final userRoleProvider = FutureProvider<String>((ref) async {
-  final prefs = await SharedPreferences.getInstance();
-  return prefs.getString('userRole')?.toLowerCase() ?? 'student';
-});
-
-// All Subjects Provider
-final allSubjectsProvider = FutureProvider<List<SubjectEntity>>((ref) async {
-  final repository = ref.watch(logbookRepositoryProvider);
-  return repository.getAllSubjects();
-});
-
-// Subjects by Batch Provider
-final subjectsByBatchProvider = FutureProvider.family<List<SubjectEntity>, String?>((ref, batch) async {
-  final repository = ref.watch(logbookRepositoryProvider);
-  return repository.getAllSubjects(batch: batch);
-});
-
-// Topics by Subject Provider
-final topicsBySubjectProvider =
-    FutureProvider.family<List<TopicEntity>, String>((ref, subjectId) async {
-  final repository = ref.watch(logbookRepositoryProvider);
-  return repository.getTopicsBySubjectId(subjectId);
-});
-
-// Toggle Topic Completion Notifier
-class ToggleTopicNotifier extends StateNotifier<AsyncValue<void>> {
-  final LogbookRepository repository;
-  final Ref ref;
-
-  ToggleTopicNotifier(this.repository, this.ref) : super(const AsyncValue.data(null));
-
-  Future<void> toggleTopic(String topicId) async {
-    try {
-      await repository.toggleTopicCompletion(topicId);
-      // Invalidate providers to force a UI refresh with new data
-      ref.invalidate(allSubjectsProvider);
-      ref.invalidate(overallProgressProvider);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
+// ✅ Get all subjects for a batch (e.g., 'ICSE 10', 'CBSE 10', 'ICSE 9')
+final subjectsProvider =
+    FutureProvider.family<List<SubjectModel>, String>((ref, batch) async {
+  final dataSource = ref.watch(remoteDataSourceProvider);
+  print('📚 Fetching subjects for batch: $batch');
+  try {
+    final subjects = await dataSource.getAllSubjects(batch: batch);
+    print('✅ Subjects fetched: ${subjects.length}');
+    for (var subject in subjects) {
+      print('   - ${subject.name}: ${subject.chapters?.length ?? 0} chapters');
     }
+    return subjects;
+  } catch (e) {
+    print('❌ Error fetching subjects: $e');
+    rethrow;
   }
+});
 
-  Future<void> toggleTask({
-    required String subjectId,
-    required String chapterId,
-    required String topicId,
-    required String taskId,
-  }) async {
-    try {
-      await repository.toggleTaskCompletion(subjectId, chapterId, topicId, taskId);
-      ref.invalidate(allSubjectsProvider);
-      ref.invalidate(overallProgressProvider);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-    }
+// ✅ Get chapters for a specific subject
+final chaptersProvider =
+    FutureProvider.family<List<ChapterModel>, String>((ref, subjectId) async {
+  final dataSource = ref.watch(remoteDataSourceProvider);
+  return dataSource.getChaptersBySubjectId(subjectId);
+});
+
+// ✅ Get tasks for a specific chapter
+final tasksProvider =
+    FutureProvider.family<List<TaskModel>, String>((ref, chapterId) async {
+  final dataSource = ref.watch(remoteDataSourceProvider);
+  return dataSource.getTasksByChapterId(chapterId);
+});
+
+// ✅ Get student progress for a chapter
+final chapterProgressProvider = FutureProvider.family<Map<String, bool>, (String, String)>(
+    (ref, params) async {
+  final (chapterId, studentId) = params;
+  final dataSource = ref.watch(remoteDataSourceProvider);
+  return dataSource.getChapterProgress(chapterId, studentId);
+});
+
+// ✅ Toggle task completion (StateNotifier for reactive updates)
+final taskCompletionProvider = StateNotifierProvider.family<
+    TaskCompletionNotifier,
+    bool,
+    String>((ref, taskId) {
+  final dataSource = ref.watch(remoteDataSourceProvider);
+  return TaskCompletionNotifier(dataSource, taskId);
+});
+
+class TaskCompletionNotifier extends StateNotifier<bool> {
+  final RemoteDataSource _dataSource;
+  final String _taskId;
+
+  TaskCompletionNotifier(this._dataSource, this._taskId) : super(false);
+
+  Future<void> toggleCompletion(bool isCompleted) async {
+    await _dataSource.toggleTaskCompletion(_taskId, isCompleted);
+    state = isCompleted;
   }
 }
-
-final toggleTopicProvider =
-    StateNotifierProvider<ToggleTopicNotifier, AsyncValue<void>>((ref) {
-  final repository = ref.watch(logbookRepositoryProvider);
-  return ToggleTopicNotifier(repository, ref);
-});
-
-// Overall Progress Provider - Calculated based on actual subject data
-final overallProgressProvider = FutureProvider<double>((ref) async {
-  final subjects = await ref.watch(allSubjectsProvider.future);
-
-  if (subjects.isEmpty) return 0.0;
-
-  double totalProgress = 0;
-  for (var subject in subjects) {
-    totalProgress += subject.progress;
-  }
-  
-  return (totalProgress / subjects.length) * 100;
-});
-
-// Progress by Batch Provider
-final progressByBatchProvider = FutureProvider.family<double, String?>((ref, batch) async {
-  final subjects = await ref.watch(subjectsByBatchProvider(batch).future);
-
-  if (subjects.isEmpty) return 0.0;
-
-  double totalProgress = 0;
-  for (var subject in subjects) {
-    totalProgress += subject.progress;
-  }
-  
-  return (totalProgress / subjects.length) * 100;
-});

@@ -18,7 +18,7 @@ class StudentDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subjectsAsync = ref.watch(subjectsByBatchProvider(batch));
+    final subjectsAsync = ref.watch(subjectsProvider(batch ?? 'ICSE 10'));
     
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
