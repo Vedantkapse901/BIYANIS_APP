@@ -71,8 +71,45 @@ class RemoteDataSource {
         subject['chapters'] = chaptersData;
       }
 
-      print('✅ ⚡ FAST LOAD: ${subjects.length} subjects, ${allChapters.length} chapters');
-      return subjects.map((json) => SubjectModel.fromJson(json)).toList();
+      final subjectModels = subjects.map((json) => SubjectModel.fromJson(json)).toList();
+
+      // ✅ Sort subjects in a specific pedagogical order
+      final subjectOrder = [
+        'PHYSICS',
+        'CHEMISTRY',
+        'MATHEMATICS',
+        'BIOLOGY',
+        'ENGLISH LITERATURE',
+        'ENGLISH LANGUAGE',
+        'HINDI',
+        'COMPUTER APPLICATIONS',
+        'CIVICS',
+        'HISTORY',
+        'GEOGRAPHY',
+        'ECONOMICS',
+      ];
+
+      subjectModels.sort((a, b) {
+        final indexA = subjectOrder.indexWhere((s) => a.name.toUpperCase().contains(s));
+        final indexB = subjectOrder.indexWhere((s) => b.name.toUpperCase().contains(s));
+
+        if (indexA == -1 && indexB == -1) return a.name.compareTo(b.name);
+        if (indexA == -1) return 1;
+        if (indexB == -1) return -1;
+        return indexA.compareTo(indexB);
+      });
+
+      // ✅ Sort chapters within each subject numerically
+      for (var subject in subjectModels) {
+        subject.chapters.sort((a, b) {
+          int cmp = (a.orderIndex ?? 0).compareTo(b.orderIndex ?? 0);
+          if (cmp != 0) return cmp;
+          return a.title.compareTo(b.title); // Secondary sort by title
+        });
+      }
+
+      print('✅ ⚡ FAST LOAD: ${subjectModels.length} subjects, sorted');
+      return subjectModels;
     } catch (e) {
       print('❌ Error in getAllSubjects: $e');
       rethrow;

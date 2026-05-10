@@ -36,7 +36,11 @@ class ChapterModel extends HiveObject {
 
   factory ChapterModel.fromJson(Map<String, dynamic> json) {
     final chapterId = json['id'] as String;
-    final chapterTitle = json['title'] ?? json['chapter_name'] ?? '';
+    // Clean weird characters like  from the title
+    final chapterTitle = (json['title'] ?? json['chapter_name'] ?? '')
+        .toString()
+        .replaceAll('', '')
+        .trim();
 
     // Parse tasks from columns task_1...task_13 if 'tasks' array is missing
     List<TaskModel> parsedTasks = [];
@@ -58,13 +62,21 @@ class ChapterModel extends HiveObject {
       }
     }
 
+    // Extract numeric part from order_index (handles "1", "2", "3 (A)", "3 (B)")
+    final rawOrderIndex = json['order_index']?.toString() ?? '';
+    int? parsedOrderIndex;
+    if (json['order_index'] is int) {
+      parsedOrderIndex = json['order_index'];
+    } else if (rawOrderIndex.isNotEmpty) {
+      // Try to get the first numeric part, e.g., "3" from "3 (A)"
+      parsedOrderIndex = int.tryParse(rawOrderIndex.split(RegExp(r'[^0-9]')).first);
+    }
+
     return ChapterModel(
       id: chapterId,
       subjectId: json['subject_id'] ?? '',
       title: chapterTitle,
-      orderIndex: json['order_index'] is int
-          ? json['order_index']
-          : int.tryParse(json['order_index']?.toString() ?? ''),
+      orderIndex: parsedOrderIndex,
       topics: json['topics'] != null
           ? (json['topics'] as List).map((t) => TopicModel.fromJson(t)).toList()
           : [],

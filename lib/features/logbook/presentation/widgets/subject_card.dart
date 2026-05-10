@@ -132,7 +132,7 @@ class _SubjectCardState extends ConsumerState<SubjectCard>
                             ),
                             const SizedBox(width: 12),
                             Text(
-                              '${(progress * 100).toInt()}%',
+                              '${(progress * 100).round()}%',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: AppTheme.primary,

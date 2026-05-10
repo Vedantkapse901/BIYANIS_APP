@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Color Palette (Red, Blue, White)
@@ -76,54 +75,61 @@ class AppTheme {
         error: error,
       ),
       scaffoldBackgroundColor: bgLight,
-      appBarTheme: AppBarTheme(
+      fontFamily: 'Arial', // Set global font to Arial
+      appBarTheme: const AppBarTheme(
         elevation: 0,
         backgroundColor: bgLight,
         foregroundColor: textPrimary,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.poppins(
+        titleTextStyle: TextStyle(
+          fontFamily: 'Arial',
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
       ),
-      textTheme: GoogleFonts.poppinsTextTheme(
-        const TextTheme(
-          displayLarge: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            color: textPrimary,
-          ),
-          displayMedium: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: textPrimary,
-          ),
-          headlineSmall: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-          ),
-          titleLarge: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-          ),
-          bodyLarge: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: textPrimary,
-          ),
-          bodyMedium: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w400,
-            color: textSecondary,
-          ),
-          labelSmall: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: textLight,
-          ),
+      textTheme: const TextTheme(
+        displayLarge: TextStyle(
+          fontFamily: 'Arial',
+          fontSize: 28,
+          fontWeight: FontWeight.w700,
+          color: textPrimary,
+        ),
+        displayMedium: TextStyle(
+          fontFamily: 'Arial',
+          fontSize: 24,
+          fontWeight: FontWeight.w700,
+          color: textPrimary,
+        ),
+        headlineSmall: TextStyle(
+          fontFamily: 'Arial',
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: textPrimary,
+        ),
+        titleLarge: TextStyle(
+          fontFamily: 'Arial',
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: textPrimary,
+        ),
+        bodyLarge: TextStyle(
+          fontFamily: 'Arial',
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          color: textPrimary,
+        ),
+        bodyMedium: TextStyle(
+          fontFamily: 'Arial',
+          fontSize: 14,
+          fontWeight: FontWeight.w400,
+          color: textSecondary,
+        ),
+        labelSmall: TextStyle(
+          fontFamily: 'Arial',
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: textLight,
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(

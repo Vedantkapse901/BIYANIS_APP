@@ -67,7 +67,7 @@ class _ChapterItemState extends State<ChapterItem> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${(widget.progress * 100).toInt()}%',
+                  '${(widget.progress * 100).round()}%',
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                 ),
                 Icon(_isExpanded ? Icons.expand_less : Icons.expand_more, size: 18),

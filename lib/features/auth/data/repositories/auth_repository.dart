@@ -112,132 +112,103 @@ class AuthRepository {
     }
   }
 
-  // ===== LOGIN - USE SUPABASE AUTH =====
+  // ===== LOGIN - USE SUPABASE AUTH + APPROVED LIST =====
   Future<Map<String, dynamic>?> login(String username, String password, String role) async {
     try {
-      // For STUDENT login - use serial_id (001, 002, etc.)
+      // 1. FOR STUDENT LOGIN - Check "Approved List" (students table)
       if (role == 'student') {
-        // Get student by serial_id
         final student = await _supabase
             .from('students')
             .select()
             .eq('serial_id', username)
+            .eq('password', password) // Direct password check for approved list
             .maybeSingle();
 
         if (student == null) {
+          print('❌ Student not in approved list or wrong password');
           return null;
         }
 
-        final email = student['email'] ?? '${student['serial_id']}@student.logbook';
+        // Save session locally
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userRole', 'student');
+        await prefs.setString('studentId', student['serial_id']);
+        await prefs.setString('name', student['name'] ?? '');
+        await prefs.setString('batch', student['batch'] ?? '');
+        await prefs.setString('userId', student['id']); // Using students table ID as session ID
 
-        // Authenticate with Supabase Auth
-        final authResponse = await _supabase.auth.signInWithPassword(
-          email: email,
-          password: password,
-        );
-
-        if (authResponse.user != null) {
-          // Get profile data
-          final profile = await _supabase
-              .from('profiles')
-              .select()
-              .eq('id', authResponse.user!.id)
-              .maybeSingle();
-
-          if (profile != null) {
-            final userData = Map<String, dynamic>.from(profile);
-
-            // Save session
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('userRole', role);
-            await prefs.setString('studentId', student['serial_id'] ?? username);
-            await prefs.setString('email', email);
-            await prefs.setString('userId', authResponse.user!.id);
-
-            // Save student details
-            await prefs.setString('name', student['name'] ?? '');
-            final studentBatch = '${student['board'] ?? ''} ${student['standard'] ?? ''}'.trim();
-            await prefs.setString('batch', studentBatch);
-            if (student['branch'] != null) {
-              await prefs.setString('branch', student['branch']);
-            }
-
-            return userData;
-          }
-        }
-        return null;
+        return Map<String, dynamic>.from(student);
       }
 
-      // For TEACHER login - use username with batch isolation
+      // 2. FOR PARENT LOGIN - Check Approved Parent List
+      if (role == 'parent') {
+        final parent = await _supabase
+            .from('parents')
+            .select()
+            .eq('parent_id', username)
+            .eq('password', password)
+            .maybeSingle();
+
+        if (parent == null) {
+          print('❌ Parent not in approved list or wrong password');
+          return null;
+        }
+
+        final childId = parent['child_id'];
+
+        // Verify child is in approved list
+        final student = await _supabase
+            .from('students')
+            .select()
+            .eq('serial_id', childId)
+            .maybeSingle();
+
+        if (student == null) {
+          print('❌ Ward ($childId) not in approved student list');
+          return null;
+        }
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userRole', 'parent');
+        await prefs.setString('childId', childId);
+        await prefs.setString('name', parent['name'] ?? '');
+        await prefs.setString('userId', parent['id']);
+
+        return Map<String, dynamic>.from(parent);
+      }
+
+      // 3. FOR TEACHER LOGIN - Check Approved Profile List
       if (role == 'teacher') {
-        // Get teacher by username
         final teacher = await _supabase
             .from('profiles')
             .select()
             .eq('username', username)
+            .eq('pin', password) // Matches the 'pin' column we just updated via SQL
             .eq('role', 'teacher')
             .maybeSingle();
 
         if (teacher == null) {
+          print('❌ Teacher not found or wrong password');
           return null;
         }
 
-        final email = teacher['email'];
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userRole', 'teacher');
+        await prefs.setString('username', username);
+        await prefs.setString('name', teacher['name'] ?? '');
+        await prefs.setString('userId', teacher['id']);
+        await prefs.setString('batch', teacher['batch'] ?? '');
+        await prefs.setString('branch', teacher['branch'] ?? '');
 
-        // Authenticate with Supabase Auth
-        final authResponse = await _supabase.auth.signInWithPassword(
-          email: email,
-          password: password,
-        );
-
-        if (authResponse.user != null) {
-          final userData = Map<String, dynamic>.from(teacher);
-
-          // Save session
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('userRole', role);
-          await prefs.setString('username', username);
-          await prefs.setString('name', teacher['name'] ?? '');
-          await prefs.setString('userId', authResponse.user!.id);
-          await prefs.setString('batch', teacher['batch'] ?? '');
-          await prefs.setString('branch', teacher['branch'] ?? '');
-          if (teacher['email'] != null) {
-            await prefs.setString('email', teacher['email']);
-          }
-
-          return userData;
-        }
-        return null;
+        return Map<String, dynamic>.from(teacher);
       }
 
-      // For OTHER ROLES - use email/username with Supabase Auth
-      final authResponse = await _supabase.auth.signInWithPassword(
-        email: username,
-        password: password,
-      );
-
-      if (authResponse.user != null) {
-        // Get profile data
-        final response = await _supabase
-            .from('profiles')
-            .select()
-            .eq('id', authResponse.user!.id)
-            .eq('role', role)
-            .maybeSingle();
-
-        if (response != null) {
-          final userData = Map<String, dynamic>.from(response);
-
-          // Save session
+      // 4. FOR SUPER ADMIN - Hardcoded or special check
+      if (role == 'super_admin') {
+        if (username == 'superadmin' && password == 'admin123') {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('userRole', role);
-          await prefs.setString('username', username);
-          await prefs.setString('name', response['name'] ?? '');
-          await prefs.setString('userId', authResponse.user!.id);
-          if (response['branch'] != null) await prefs.setString('branch', response['branch']);
-          if (response['batch'] != null) await prefs.setString('batch', response['batch']);
-
-          return userData;
+          await prefs.setString('userRole', 'super_admin');
+          return {'role': 'super_admin', 'name': 'Super Admin'};
         }
       }
 

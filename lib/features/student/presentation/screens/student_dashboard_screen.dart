@@ -136,11 +136,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
       final subjectsResponse = await supabase
           .from('subjects')
           .select('id, name, color, icon')
-          .eq('batch', batch)
-          .timeout(const Duration(seconds: 30), onTimeout: () {
-            print('❌ Subject loading timed out after 30 seconds');
-            throw TimeoutException('Failed to load subjects');
-          });
+          .eq('batch', batch);
 
       List<SubjectModel> subjects = [];
 
@@ -153,75 +149,49 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
         // Fetch chapters with embedded tasks for this subject
         final chaptersResponse = await supabase
             .from('chapters')
-            .select('id, chapter_name, order_index, task_1, task_2, task_3, task_4, task_5, task_6, task_7, task_8, task_9, task_10, task_11, task_12, task_13')
+            .select('*')
             .eq('subject_id', subjectId)
-            .eq('batch', batch)
             .order('order_index', ascending: true);
-
-        // Store original order_index text for display (preserves "3 (A)", "3 (B)", etc.)
-        _chapterOrderIndexMap.clear(); // Clear previous data
 
         // Create chapter models from the response with embedded tasks
         final chapters = (chaptersResponse as List).map((chapter) {
           final chapterId = chapter['id'];
-          final orderIndexStr = chapter['order_index']?.toString() ?? '0';
-          final chapterTitle = chapter['chapter_name'];
 
-          // DEBUG: Log the order_index values
-          if (orderIndexStr.contains('(')) {
-            print('✅ Chapter: $chapterTitle → order_index: "$orderIndexStr"');
-          }
-
-          // Store original text for display
-          _chapterOrderIndexMap[chapterId] = orderIndexStr;
+          // Improved order_index parsing for numerical sorting
+          final rawOrderIndex = chapter['order_index']?.toString() ?? '0';
+          int parsedOrderInt = int.tryParse(rawOrderIndex.split(RegExp(r'[^0-9]')).first) ?? 0;
 
           // Extract tasks from task_1 through task_13 columns
           List<TaskModel> chapterTasks = [];
           for (int i = 1; i <= 13; i++) {
             final taskKey = 'task_$i';
             final taskValue = chapter[taskKey];
-            if (taskValue != null && taskValue.toString().isNotEmpty) {
+            if (taskValue != null && taskValue.toString().trim().isNotEmpty) {
               chapterTasks.add(
                 TaskModel(
                   id: '${chapterId}_task_$i',
-                  title: taskValue.toString(),
+                  title: taskValue.toString().trim(),
                   chapterId: chapterId,
-                  isCompleted: false, // Will be updated from progress data
+                  isCompleted: false,
                   orderIndex: i,
                 ),
               );
             }
           }
 
-          // Extract numeric part for sorting
-          final orderIndexInt = int.tryParse(orderIndexStr.split(' ').first) ?? 0;
-
           return ChapterModel(
             id: chapterId,
             subjectId: subjectId,
-            title: chapter['chapter_name'],
-            orderIndex: orderIndexInt,
+            title: chapter['chapter_name'] ?? chapter['title'] ?? 'Unknown Chapter',
+            orderIndex: parsedOrderInt,
             tasks: chapterTasks,
           );
         }).toList();
 
+        // Sort chapters numerically by orderIndex
+        chapters.sort((a, b) => (a.orderIndex ?? 0).compareTo(b.orderIndex ?? 0));
+
         if (chapters.isNotEmpty) {
-          // Sort chapters by order_index (numeric sort for "1", "2", "3 (A)", "3 (B)")
-          chapters.sort((a, b) {
-            // Extract numeric part from stored original text
-            int aNum = int.tryParse(_chapterOrderIndexMap[a.id]?.split(' ').first ?? '0') ?? 0;
-            int bNum = int.tryParse(_chapterOrderIndexMap[b.id]?.split(' ').first ?? '0') ?? 0;
-
-            if (aNum != bNum) {
-              return aNum.compareTo(bNum);
-            }
-
-            // If same number, sort by suffix (A comes before B)
-            final aText = _chapterOrderIndexMap[a.id] ?? '0';
-            final bText = _chapterOrderIndexMap[b.id] ?? '0';
-            return aText.compareTo(bText);
-          });
-
           subjects.add(
             SubjectModel(
               id: subjectId,
@@ -235,20 +205,12 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
         }
       }
 
-      // Sort subjects in the correct order
+      // Pedagogical sorting for subjects
       final subjectOrder = [
-        'PHYSICS',
-        'CHEMISTRY',
-        'MATHEMATICS',
-        'BIOLOGY',
-        'ENGLISH LITERATURE',
-        'ENGLISH LANGUAGE',
-        'HINDI',
-        'COMPUTER APPLICATIONS',
-        'CIVICS',
-        'HISTORY',
-        'GEOGRAPHY',
-        'ECONOMICS',
+        'PHYSICS', 'CHEMISTRY', 'MATHEMATICS', 'MATHS', 'BIOLOGY',
+        'ENGLISH LITERATURE', 'LITERATURE', 'ENGLISH LANGUAGE', 'LANGUAGE',
+        'HINDI', 'COMPUTER APPLICATIONS', 'CA', 'CS', 'CIVICS', 'HISTORY',
+        'GEOGRAPHY', 'ECONOMICS', 'ECONOMIC'
       ];
 
       subjects.sort((a, b) {
@@ -352,9 +314,21 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
     }
   }
 
-  Future<void> _markTaskComplete(String chapterId, String taskId) async {
-    // Students can mark tasks complete
-    // Teachers cannot (view-only)
+  void _toggleTaskLocal(String chapterId, String taskId) {
+    setState(() {
+      if (!_completedTasks.containsKey(chapterId)) {
+        _completedTasks[chapterId] = {};
+      }
+
+      if (_completedTasks[chapterId]!.contains(taskId)) {
+        _completedTasks[chapterId]!.remove(taskId);
+      } else {
+        _completedTasks[chapterId]!.add(taskId);
+      }
+    });
+  }
+
+  Future<void> _submitChapterProgress(String chapterId, List<TaskModel> chapterTasks) async {
     final studentId = _studentId;
     if (studentId == null) return;
 
@@ -369,46 +343,50 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
       if (studentResponse != null) {
         final studentDbId = studentResponse['id'];
 
-        print('📝 Marking task complete:');
-        print('   Student: $studentDbId');
-        print('   Chapter: $chapterId');
-        print('   Task: $taskId');
+        print('📝 Submitting progress for chapter: $chapterId');
 
-        try {
-          // Use upsert to handle both insert and update
-          final response = await supabase.from('student_progress').upsert(
-            {
-              'student_id': studentDbId,
-              'chapter_id': chapterId,
-              'task_id': taskId,
-              'is_completed': true,
-              'completed_at': DateTime.now().toIso8601String(),
-            },
-            onConflict: 'student_id,chapter_id,task_id',
-          );
-          print('✅ Task saved successfully');
-          print('   Response: $response');
-        } catch (e) {
-          print('❌ Failed to save task: $e');
-          print('   Details: student_id=$studentDbId, chapter_id=$chapterId, task_id=$taskId');
-          rethrow;
-        }
+        // Prepare batch upsert for ALL tasks in this chapter
+        // This ensures un-checked tasks are also updated in DB
+        final List<Map<String, dynamic>> updates = chapterTasks.map((task) {
+          final isCompleted = (_completedTasks[chapterId] ?? {}).contains(task.id);
+          return {
+            'student_id': studentDbId,
+            'chapter_id': chapterId,
+            'task_id': task.id,
+            'is_completed': isCompleted,
+            'completed_at': isCompleted ? DateTime.now().toIso8601String() : null,
+          };
+        }).toList();
+
+        await supabase.from('student_progress').upsert(
+          updates,
+          onConflict: 'student_id,chapter_id,task_id',
+        );
 
         setState(() {
-          if (!_completedTasks.containsKey(chapterId)) {
-            _completedTasks[chapterId] = {};
-          }
-          _completedTasks[chapterId]!.add(taskId);
-          _chapterCompletedCount[chapterId] =
-              (_chapterCompletedCount[chapterId] ?? 0) + 1;
+          _chapterCompletedCount[chapterId] = (_completedTasks[chapterId] ?? {}).length;
         });
 
+        // Scroll to top to show updated overall progress
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Task completed!'), duration: Duration(seconds: 1)),
+          SnackBar(
+            content: Text('${_chapterCompletedCount[chapterId]}/${chapterTasks.length} tasks submitted! ✓'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: _parseSubjectColor(_subjects[_selectedSubjectIndex].color),
+          ),
         );
       }
     } catch (e) {
-      print('❌ Error marking task complete: $e');
+      print('❌ Error submitting progress: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ Failed to save progress. Please try again.')),
+      );
     }
   }
 
@@ -686,7 +664,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
                             totalTasks += tasks.length;
                             completedTasks += _chapterCompletedCount[chapter.id] ?? 0;
                           }
-                          final percentage = totalTasks > 0 ? (completedTasks * 100 ~/ totalTasks) : 0;
+                          final percentage = totalTasks > 0 ? (completedTasks * 100 / totalTasks).round() : 0;
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -823,7 +801,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
                                           ),
                                         ),
                                         Text(
-                                          '${totalTasks > 0 ? ((_chapterCompletedCount[chapterId] ?? 0) * 100 ~/ totalTasks) : 0}%',
+                                          '${totalTasks > 0 ? ((_chapterCompletedCount[chapterId] ?? 0) * 100 / totalTasks) .round() : 0}%',
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.w500,
@@ -874,8 +852,8 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: GestureDetector(
                                       onTap: () {
-                                        // Mark task complete and save to database
-                                        _markTaskComplete(chapterId, taskId);
+                                        // Toggle task locally
+                                        _toggleTaskLocal(chapterId, taskId);
                                       },
                                       child: Row(
                                         children: [
@@ -919,27 +897,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton(
-                                    onPressed: () {
-                                      final completed = (_completedTasks[chapterId] ?? {}).length;
-                                      setState(() {
-                                        _chapterCompletedCount[chapterId] = completed;
-                                      });
-
-                                      // Scroll to top to show updated progress
-                                      _scrollController.animateTo(
-                                        0,
-                                        duration: const Duration(milliseconds: 500),
-                                        curve: Curves.easeInOut,
-                                      );
-
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('$completed/${tasks.length} tasks submitted! ✓'),
-                                          duration: const Duration(seconds: 2),
-                                          backgroundColor: subjectColor,
-                                        ),
-                                      );
-                                    },
+                                    onPressed: () => _submitChapterProgress(chapterId, tasks),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: subjectColor,
                                       shape: RoundedRectangleBorder(

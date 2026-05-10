@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../data/repositories/auth_repository.dart';
@@ -131,6 +132,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
 
       if (mounted) {
+        if (widget.role == 'super_admin') {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/super-admin',
+            (route) => false,
+          );
+          return;
+        }
+
+        if (widget.role == 'parent' && user['child_id'] != null) {
+          // Special flow for parent - fetch student data first
+          final supabase = Supabase.instance.client;
+          final studentData = await supabase
+              .from('students')
+              .select()
+              .eq('serial_id', user['child_id'])
+              .maybeSingle();
+
+          if (studentData != null) {
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              '/teacher',
+              (route) => false,
+              arguments: {'student': studentData, 'isParent': true},
+            );
+            return;
+          }
+        }
+
         final route = widget.role == 'teacher' ? '/teacher' : '/student';
         Navigator.of(context).pushNamedAndRemoveUntil(route, (route) => false);
       }
@@ -325,15 +353,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Text('Login'),
               ),
-              if (widget.role == 'super_admin') ...[
-                const SizedBox(height: 24),
-                const Center(
-                  child: Text(
-                    'Use "superadmin" and "admin123"',
-                    style: TextStyle(color: AppTheme.textLight, fontSize: 12),
-                  ),
-                ),
-              ],
             ],
           ),
         ),

@@ -44,6 +44,7 @@ class StudentLogbookApp extends StatelessWidget {
         '/role-selection': (context) => const RoleSelectionScreen(),
         '/student': (context) => const StudentDashboardScreen(),
         '/teacher': (context) => const TeacherDashboardScreen(),
+        '/super-admin': (context) => const SuperAdminDashboard(),
       },
     );
   }
