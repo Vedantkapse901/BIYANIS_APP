@@ -16,6 +16,8 @@ class LocalDataSource {
   static const String _topicsBoxName = 'topics';
   static const String _userBoxName = 'user';
   static const String _studentsBoxName = 'students'; // Pre-registered students from school
+  static const String _parentsBoxName = 'parents'; // Pre-registered parents
+  static const String _teachersBoxName = 'teachers'; // Pre-registered teachers
   static const String _profilesBoxName = 'profiles'; // Student login profiles
   static const String _usersBoxName = 'all_users'; // Teachers and other users
 
@@ -23,6 +25,8 @@ class LocalDataSource {
   Box<TopicModel>? _topicsBox;
   Box? _userBox;
   Box<Map>? _studentsBox;
+  Box<Map>? _parentsBox;
+  Box<Map>? _teachersBox;
   Box<Map>? _profilesBox;
   Box<Map>? _allUsersBox;
 
@@ -56,6 +60,8 @@ class LocalDataSource {
         _topicsBox = await Hive.openBox<TopicModel>(_topicsBoxName);
         _userBox = await Hive.openBox(_userBoxName);
         _studentsBox = await Hive.openBox<Map>(_studentsBoxName);
+        _parentsBox = await Hive.openBox<Map>(_parentsBoxName);
+        _teachersBox = await Hive.openBox<Map>(_teachersBoxName);
         _profilesBox = await Hive.openBox<Map>(_profilesBoxName);
         _allUsersBox = await Hive.openBox<Map>(_usersBoxName);
       } catch (e) {
@@ -64,6 +70,8 @@ class LocalDataSource {
         await Hive.deleteBoxFromDisk(_topicsBoxName);
         await Hive.deleteBoxFromDisk(_userBoxName);
         await Hive.deleteBoxFromDisk(_studentsBoxName);
+        await Hive.deleteBoxFromDisk(_parentsBoxName);
+        await Hive.deleteBoxFromDisk(_teachersBoxName);
         await Hive.deleteBoxFromDisk(_profilesBoxName);
         await Hive.deleteBoxFromDisk(_usersBoxName);
 
@@ -71,6 +79,8 @@ class LocalDataSource {
         _topicsBox = await Hive.openBox<TopicModel>(_topicsBoxName);
         _userBox = await Hive.openBox(_userBoxName);
         _studentsBox = await Hive.openBox<Map>(_studentsBoxName);
+        _parentsBox = await Hive.openBox<Map>(_parentsBoxName);
+        _teachersBox = await Hive.openBox<Map>(_teachersBoxName);
         _profilesBox = await Hive.openBox<Map>(_profilesBoxName);
         _allUsersBox = await Hive.openBox<Map>(_usersBoxName);
       }
@@ -130,14 +140,45 @@ class LocalDataSource {
   Future<void> bulkAddStudents(List<Map> students) async {
     _ensureInitialized();
     final Map<String, Map> studentMap = {
-      for (var s in students) s['phone'].toString(): s
+      for (var s in students) (s['student_id'] ?? s['phone'] ?? s['id']).toString(): s
     };
     await _studentsBox!.putAll(studentMap);
+  }
+
+  Future<void> bulkAddParents(List<Map> parents) async {
+    _ensureInitialized();
+    final Map<String, Map> parentMap = {
+      for (var p in parents) (p['parent_id'] ?? p['id']).toString(): p
+    };
+    await _parentsBox!.putAll(parentMap);
+  }
+
+  Future<void> bulkAddTeachers(List<Map> teachers) async {
+    _ensureInitialized();
+    final Map<String, Map> teacherMap = {
+      for (var t in teachers) (t['username'] ?? t['id']).toString(): t
+    };
+    await _teachersBox!.putAll(teacherMap);
   }
 
   Future<void> clearStudents() async {
     _ensureInitialized();
     await _studentsBox!.clear();
+  }
+
+  Future<void> clearParents() async {
+    _ensureInitialized();
+    await _parentsBox!.clear();
+  }
+
+  Future<void> clearTeachers() async {
+    _ensureInitialized();
+    await _teachersBox!.clear();
+  }
+
+  Future<void> bulkAddProfiles(Map<String, Map> profiles) async {
+    _ensureInitialized();
+    await _profilesBox!.putAll(profiles);
   }
 
   // ===== PROFILES OPERATIONS (Student login profiles) =====
@@ -159,7 +200,13 @@ class LocalDataSource {
 
   // Helper to ensure initialized
   void _ensureInitialized() {
-    if (!_isInitialized || _subjectsBox == null || _topicsBox == null || _userBox == null) {
+    if (!_isInitialized ||
+        _subjectsBox == null ||
+        _topicsBox == null ||
+        _userBox == null ||
+        _studentsBox == null ||
+        _parentsBox == null ||
+        _teachersBox == null) {
       throw Exception('LocalDataSource not initialized. Call initialize() first.');
     }
   }
@@ -425,7 +472,7 @@ class LocalDataSource {
           'school_name': 'ABC School',
           'board': 'CBSE',
           'class_branch': '9A',
-          'serial_id': 'STU001',
+          'student_id': 'STU001',
           'is_registered': false,
         },
         {
@@ -436,7 +483,7 @@ class LocalDataSource {
           'school_name': 'XYZ Institute',
           'board': 'ICSE',
           'class_branch': '10B',
-          'serial_id': 'STU002',
+          'student_id': 'STU002',
           'is_registered': false,
         },
       ]);

@@ -9,6 +9,7 @@ import 'features/student/presentation/screens/student_dashboard_screen.dart';
 import 'features/teacher/presentation/screens/teacher_dashboard_screen.dart';
 import 'core/widgets/biyani_logo.dart';
 import 'core/services/supabase_service.dart';
+import 'core/services/sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,10 @@ void main() async {
     print('🔄 Initializing Supabase...');
     await SupabaseService.initialize();
     print('✅ Supabase initialized successfully!');
+
+    // Initialize Sync Service for periodic data fetching
+    await SyncService().initialize();
+    print('✅ Sync Service started!');
 
     // Verify Supabase is actually accessible
     final testClient = Supabase.instance.client;

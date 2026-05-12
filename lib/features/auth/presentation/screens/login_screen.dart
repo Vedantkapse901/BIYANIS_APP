@@ -103,7 +103,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleStandardLogin() async {
-    final username = _emailController.text.trim();
+    final username = _emailController.text.trim(); // Removed .toLowerCase()
     final password = _passwordController.text;
 
     if (username.isEmpty || password.isEmpty) {
@@ -140,22 +140,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           return;
         }
 
-        if (widget.role == 'parent' && user['child_id'] != null) {
-          // Special flow for parent - fetch student data first
-          final supabase = Supabase.instance.client;
-          final studentData = await supabase
-              .from('students')
-              .select()
-              .eq('serial_id', user['child_id'])
-              .maybeSingle();
-
-          if (studentData != null) {
+        if (widget.role == 'parent') {
+          if (user['child_id'] != null) {
+            // Parent dashboard is the same as student dashboard but with student data
             Navigator.of(context).pushNamedAndRemoveUntil(
-              '/teacher',
+              '/student',
               (route) => false,
-              arguments: {'student': studentData, 'isParent': true},
+              arguments: {'isParent': true}
             );
             return;
+          } else {
+             if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('No ward linked to your parent account.'),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+              setState(() => _isLoading = false);
+              return;
           }
         }
 
@@ -189,9 +193,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildStudentLoginScreen() {
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -329,6 +341,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 48),
               TextField(
                 controller: _emailController,
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.none,
                 decoration: const InputDecoration(
                   labelText: 'Username',
                   prefixIcon: Icon(Icons.person_outline),

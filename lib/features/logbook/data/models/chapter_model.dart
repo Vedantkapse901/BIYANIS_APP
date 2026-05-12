@@ -51,7 +51,7 @@ class ChapterModel extends HiveObject {
         final taskTitle = json['task_$i'];
         if (taskTitle != null && taskTitle.toString().trim().isNotEmpty) {
           parsedTasks.add(TaskModel(
-            id: '${chapterId}_$i',
+            id: '${chapterId}_task_$i',
             chapterId: chapterId,
             chapterName: chapterTitle,
             title: taskTitle.toString(),

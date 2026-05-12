@@ -52,6 +52,14 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
     print('✅ Student Name: $_studentName');
     print('✅ Student UUID: $_studentUUID');
 
+    // For parents, studentId might be stored as childId
+    if (_studentId == null) {
+      _studentId = prefs.getString('childId');
+      if (_studentId != null) {
+        print('👨‍👩‍👧 Parent detected, using childId: $_studentId');
+      }
+    }
+
     setState(() {});
 
     // Load student details from database to get board + standard
@@ -67,6 +75,11 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
     final studentId = _studentId;
     if (studentId == null) {
       print('❌ No student ID found');
+      if (mounted) {
+        setState(() {
+          _isLoadingSubjects = false;
+        });
+      }
       return;
     }
 
@@ -77,8 +90,8 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
       // Get student record with board and standard using serial_id
       final response = await supabase
           .from('students')
-          .select('id, board, standard')
-          .eq('serial_id', studentId)
+          .select('id, board, standard, profile_id')
+          .ilike('serial_id', studentId) // Case-insensitive, reverted to serial_id
           .maybeSingle();
 
       print('📊 Batch response: $response');
@@ -96,22 +109,34 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
         print('✅ Found batch: $board $standard');
         print('✅ Normalized batch: $normalizedBatch, DB ID: $dbId');
 
-        setState(() {
-          _studentBatch = normalizedBatch; // e.g., "ICSE 10"
-        });
+        if (mounted) {
+          setState(() {
+            _studentBatch = normalizedBatch; // e.g., "ICSE 10"
+          });
+        }
 
         // Load subjects from Supabase
-        print('🔄 Loading subjects for batch: $_studentBatch');
+        print('🔄 Loading subjects for batch: $normalizedBatch');
         await _loadSubjectsFromDatabase();
 
         // Now load progress
         print('🔄 Loading progress...');
         await _loadProgressFromDatabase();
       } else {
-        print('❌ No student record found for serial_id: $studentId');
+        print('❌ No student record found for student_id: $studentId');
+        if (mounted) {
+          setState(() {
+            _isLoadingSubjects = false;
+          });
+        }
       }
     } catch (e) {
       print('❌ Error loading batch: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingSubjects = false;
+        });
+      }
     }
   }
 
@@ -153,39 +178,9 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
             .eq('subject_id', subjectId)
             .order('order_index', ascending: true);
 
-        // Create chapter models from the response with embedded tasks
-        final chapters = (chaptersResponse as List).map((chapter) {
-          final chapterId = chapter['id'];
-
-          // Improved order_index parsing for numerical sorting
-          final rawOrderIndex = chapter['order_index']?.toString() ?? '0';
-          int parsedOrderInt = int.tryParse(rawOrderIndex.split(RegExp(r'[^0-9]')).first) ?? 0;
-
-          // Extract tasks from task_1 through task_13 columns
-          List<TaskModel> chapterTasks = [];
-          for (int i = 1; i <= 13; i++) {
-            final taskKey = 'task_$i';
-            final taskValue = chapter[taskKey];
-            if (taskValue != null && taskValue.toString().trim().isNotEmpty) {
-              chapterTasks.add(
-                TaskModel(
-                  id: '${chapterId}_task_$i',
-                  title: taskValue.toString().trim(),
-                  chapterId: chapterId,
-                  isCompleted: false,
-                  orderIndex: i,
-                ),
-              );
-            }
-          }
-
-          return ChapterModel(
-            id: chapterId,
-            subjectId: subjectId,
-            title: chapter['chapter_name'] ?? chapter['title'] ?? 'Unknown Chapter',
-            orderIndex: parsedOrderInt,
-            tasks: chapterTasks,
-          );
+        // Create chapter models from the response with embedded tasks using model's fromJson
+        final chapters = (chaptersResponse as List).map((chapterJson) {
+          return ChapterModel.fromJson(chapterJson);
         }).toList();
 
         // Sort chapters numerically by orderIndex
@@ -253,7 +248,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
       final studentResponse = await supabase
           .from('students')
           .select('id')
-          .eq('serial_id', studentId)
+          .ilike('serial_id', studentId)
           .maybeSingle();
 
       print('📊 Student record: $studentResponse');
@@ -307,7 +302,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
           print('❌ Error loading progress: $e');
         }
       } else {
-        print('❌ No student record found for serial_id: $studentId');
+        print('❌ No student record found for student_id: $studentId');
       }
     } catch (e) {
       print('❌ Error loading progress: $e');
@@ -325,6 +320,9 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
       } else {
         _completedTasks[chapterId]!.add(taskId);
       }
+
+      // Note: We intentionally DO NOT update _chapterCompletedCount here
+      // This ensures progress bars only update when "Submit" is clicked
     });
   }
 
@@ -336,21 +334,22 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
       final supabase = Supabase.instance.client;
       final studentResponse = await supabase
           .from('students')
-          .select('id')
-          .eq('serial_id', studentId)
+          .select('id, profile_id')
+          .ilike('serial_id', studentId)
           .maybeSingle();
 
       if (studentResponse != null) {
-        final studentDbId = studentResponse['id'];
+        // Use profile_id if available, otherwise fallback to students table ID
+        // Note: student_progress table usually references profiles.id (UUID)
+        final studentProgressId = studentResponse['profile_id'] ?? studentResponse['id'];
 
-        print('📝 Submitting progress for chapter: $chapterId');
+        print('📝 Submitting progress for student: $studentProgressId, chapter: $chapterId');
 
         // Prepare batch upsert for ALL tasks in this chapter
-        // This ensures un-checked tasks are also updated in DB
         final List<Map<String, dynamic>> updates = chapterTasks.map((task) {
           final isCompleted = (_completedTasks[chapterId] ?? {}).contains(task.id);
           return {
-            'student_id': studentDbId,
+            'student_id': studentProgressId,
             'chapter_id': chapterId,
             'task_id': task.id,
             'is_completed': isCompleted,
@@ -360,7 +359,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
 
         await supabase.from('student_progress').upsert(
           updates,
-          onConflict: 'student_id,chapter_id,task_id',
+          onConflict: 'student_id,task_id',
         );
 
         setState(() {
@@ -384,9 +383,14 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
       }
     } catch (e) {
       print('❌ Error submitting progress: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ Failed to save progress. Please try again.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to save: ${e.toString().contains('403') ? 'Permission denied (RLS)' : e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -478,11 +482,52 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
         appBar: AppBar(
           title: const Text('LOG BOOK'),
           backgroundColor: AppTheme.primary,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Force Logout',
+              onPressed: () async {
+                final supabase = Supabase.instance.client;
+                await supabase.auth.signOut();
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
+                if (context.mounted) {
+                  Navigator.pushReplacementNamed(context, '/role-selection');
+                }
+              },
+            ),
+          ],
         ),
         body: Center(
-          child: _subjects.isEmpty && !_isLoadingSubjects
-              ? const Text('No subjects available for your batch')
-              : const CircularProgressIndicator(),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_subjects.isEmpty && !_isLoadingSubjects)
+                const Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Text(
+                    'No subjects available for your batch.\nPlease check your profile or logout and try again.',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                const CircularProgressIndicator(),
+              const SizedBox(height: 20),
+              if (_isLoadingSubjects)
+                TextButton(
+                  onPressed: () async {
+                    final supabase = Supabase.instance.client;
+                    await supabase.auth.signOut();
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.clear();
+                    if (context.mounted) {
+                      Navigator.pushReplacementNamed(context, '/role-selection');
+                    }
+                  },
+                  child: const Text('Cancel & Logout'),
+                ),
+            ],
+          ),
         ),
       );
     }
@@ -499,8 +544,15 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              Navigator.pushReplacementNamed(context, '/role-selection');
+            tooltip: 'Logout',
+            onPressed: () async {
+              final supabase = Supabase.instance.client;
+              await supabase.auth.signOut();
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              if (context.mounted) {
+                Navigator.pushReplacementNamed(context, '/role-selection');
+              }
             },
           ),
         ],

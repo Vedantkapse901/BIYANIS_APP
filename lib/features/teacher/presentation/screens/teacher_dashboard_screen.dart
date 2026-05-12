@@ -15,7 +15,7 @@ class TeacherDashboardScreen extends StatefulWidget {
 }
 
 class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
-  late Future<List<Map<String, dynamic>>> _studentsFuture;
+  Future<List<Map<String, dynamic>>>? _studentsFuture;
   String? _batch;
   String? _teacherName;
   final TextEditingController _searchController = TextEditingController();
@@ -64,7 +64,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       final student = await supabase
           .from('students')
           .select()
-          .eq('serial_id', childId)
+          .ilike('serial_id', childId)
           .maybeSingle();
 
       if (student != null) {
@@ -88,16 +88,28 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       final supabase = Supabase.instance.client;
       final userId = prefs.getString('userId');
       if (userId != null) {
-        final profile = await supabase
-            .from('profiles')
-            .select('batch, branch, name')
+        // Try fetching from teachers table first (new system)
+        var teacherData = await supabase
+            .from('teachers')
+            .select('batch, name, subject')
             .eq('id', userId)
             .maybeSingle();
 
-        if (profile != null) {
-          await prefs.setString('batch', profile['batch'] ?? '');
-          await prefs.setString('branch', profile['branch'] ?? '');
-          await prefs.setString('name', profile['name'] ?? '');
+        // Fallback to profiles if not found (old system)
+        if (teacherData == null) {
+          teacherData = await supabase
+              .from('profiles')
+              .select('batch, branch, name')
+              .eq('id', userId)
+              .maybeSingle();
+        }
+
+        if (teacherData != null) {
+          await prefs.setString('batch', teacherData['batch'] ?? '');
+          await prefs.setString('name', teacherData['name'] ?? '');
+          if (teacherData['subject'] != null) {
+            await prefs.setString('teacherSubject', teacherData['subject']);
+          }
         }
       }
     } catch (e) {
@@ -144,13 +156,17 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       final response = await query.order('serial_id', ascending: true);
       final students = List<Map<String, dynamic>>.from(response);
 
+      print('📡 Fetched ${students.length} raw students for $board $standardNum');
+
       final filteredList = students.where((s) {
-        final sBoard = (s['board'] ?? '').toString().toLowerCase();
-        final sStandard = (s['standard'] ?? '').toString().toLowerCase();
+        final sBoard = (s['board'] ?? '').toString().toLowerCase().trim();
+        final sStandard = (s['standard'] ?? '').toString().toLowerCase().trim();
+        final sStandardNum = sStandard.replaceAll(RegExp(r'(st|nd|rd|th)$', caseSensitive: false), '');
         final sBranch = (s['class_branch'] ?? '').toString().toLowerCase();
 
         bool matchesBoard = sBoard == board.toLowerCase();
-        bool matchesStandard = sStandard.contains(standardNum) || standardNum.contains(sStandard);
+        bool matchesStandard = sStandardNum == standardNum;
+
         bool matchesBranch = true;
         if (teacherBranch != null && teacherBranch.isNotEmpty) {
            matchesBranch = sBranch.contains(teacherBranch.toLowerCase());
@@ -158,6 +174,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
         return matchesBoard && matchesStandard && matchesBranch;
       }).toList();
+
+      print('🎯 Filtered to ${filteredList.length} students matching batch parameters');
 
       setState(() {
         _allStudents = filteredList;
@@ -321,12 +339,15 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              FutureBuilder<List<Map<String, dynamic>>>(
-                future: _studentsFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
-                  }
+              if (_studentsFuture == null)
+                const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+              else
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _studentsFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+                    }
                   if (snapshot.hasError) {
                     return Center(child: Padding(padding: const EdgeInsets.all(32), child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red))));
                   }
@@ -414,7 +435,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                       children: [
                         Text(student['name'] ?? 'Unknown', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 4),
-                        Text('ID: ${student['serial_id'] ?? 'N/A'}', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        Text(
+                          'ID: ${(student['serial_id']?.toString().isEmpty ?? true) ? 'N/A' : student['serial_id']}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
                       ],
                     ),
                   ),
@@ -466,6 +490,7 @@ class _StudentFullScreenViewState extends ConsumerState<StudentFullScreenView> {
   final Map<String, Set<String>> _completedTasks = {};
   final Map<String, int> _chapterCompletedCount = {};
   List<SubjectModel> _subjects = [];
+  String? _assignedSubject; // Store the teacher's restricted subject
   bool _isLoading = true;
   late Timer _refreshTimer;
   int _lastRefreshSeconds = 0;
@@ -473,6 +498,7 @@ class _StudentFullScreenViewState extends ConsumerState<StudentFullScreenView> {
   @override
   void initState() {
     super.initState();
+    _checkTeacherAssignment();
     _loadSubjectsOnce();
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted) {
@@ -490,6 +516,17 @@ class _StudentFullScreenViewState extends ConsumerState<StudentFullScreenView> {
     super.dispose();
   }
 
+  Future<void> _checkTeacherAssignment() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _assignedSubject = prefs.getString('teacherSubject');
+      if (_assignedSubject != null && _assignedSubject!.isEmpty) {
+        _assignedSubject = null;
+      }
+      print('👨‍🏫 Teacher restricted to subject: ${_assignedSubject ?? "ALL"}');
+    });
+  }
+
   Future<void> _loadSubjectsOnce() async {
     try {
       final remoteDataSource = RemoteDataSource();
@@ -499,6 +536,35 @@ class _StudentFullScreenViewState extends ConsumerState<StudentFullScreenView> {
       final batch = '${board.toUpperCase()} $normalizedStandard';
 
       final subjects = await remoteDataSource.getAllSubjects(batch: batch);
+
+      // Filter subjects if teacher is assigned to a specific one
+      List<SubjectModel> filteredSubjects = subjects;
+      if (_assignedSubject != null) {
+        final assignedName = _assignedSubject!.toUpperCase().trim();
+        filteredSubjects = subjects.where((s) {
+          final subjectName = s.name.toUpperCase().trim();
+          // Use exact match instead of contains to prevent showing "PHYSICS" or "CIVICS" when "CS" is assigned
+          return subjectName == assignedName;
+        }).toList();
+
+        // Fallback: If exact match failed, try careful substring match for common aliases
+        if (filteredSubjects.isEmpty) {
+          filteredSubjects = subjects.where((s) {
+            final subjectName = s.name.toUpperCase().trim();
+            if (assignedName == 'MATHS' || assignedName == 'MATHEMATICS') {
+              return subjectName == 'MATHS' || subjectName == 'MATHEMATICS';
+            }
+            if (assignedName == 'CS' || assignedName == 'COMPUTER APPLICATIONS') {
+              return subjectName == 'CS' || subjectName == 'COMPUTER APPLICATIONS';
+            }
+            if (assignedName == 'CA') {
+              return subjectName == 'CA' || subjectName == 'COMPUTER APPLICATIONS';
+            }
+            return subjectName.contains(assignedName) || assignedName.contains(subjectName);
+          }).toList();
+        }
+        print('✂️ Filtered to ${filteredSubjects.length} subjects for teacher ($_assignedSubject)');
+      }
 
       // Pedagogical sorting for both ICSE and CBSE
       final subjectOrder = [
@@ -522,7 +588,7 @@ class _StudentFullScreenViewState extends ConsumerState<StudentFullScreenView> {
         return indexA.compareTo(indexB);
       });
 
-      for (var subject in subjects) {
+      for (var subject in filteredSubjects) {
         if (subject.chapters != null) {
           subject.chapters.sort((a, b) {
             int cmp = (a.orderIndex ?? 0).compareTo(b.orderIndex ?? 0);
@@ -533,7 +599,7 @@ class _StudentFullScreenViewState extends ConsumerState<StudentFullScreenView> {
       }
 
       setState(() {
-        _subjects = subjects;
+        _subjects = filteredSubjects;
       });
       await _loadProgressOnly();
     } catch (e) {
@@ -621,8 +687,34 @@ class _StudentFullScreenViewState extends ConsumerState<StudentFullScreenView> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.student['name'] ?? 'Loading'), backgroundColor: AppTheme.primary),
-        body: const Center(child: CircularProgressIndicator()),
+        appBar: AppBar(
+          title: Text(widget.student['name'] ?? 'Loading'),
+          backgroundColor: AppTheme.primary,
+          actions: [
+            if (widget.isParentView)
+              IconButton(
+                icon: const Icon(Icons.logout),
+                tooltip: 'Force Logout',
+                onPressed: () async {
+                  await Supabase.instance.client.auth.signOut();
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.clear();
+                  if (context.mounted) Navigator.pushReplacementNamed(context, '/role-selection');
+                },
+              ),
+          ],
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 20),
+              if (widget.isParentView)
+                const Text('Loading your ward\'s progress...', style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
       );
     }
     if (_subjects.isEmpty) {
@@ -694,7 +786,10 @@ class _StudentFullScreenViewState extends ConsumerState<StudentFullScreenView> {
                     children: [
                       Icon(Icons.badge, size: 16, color: Colors.grey.shade600),
                       const SizedBox(width: 6),
-                      Text('ID: ${widget.student['serial_id'] ?? 'N/A'}', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                      Text(
+                        'ID: ${(widget.student['serial_id']?.toString().isEmpty ?? true) ? 'N/A' : widget.student['serial_id']}',
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      ),
                       const SizedBox(width: 16),
                       Icon(Icons.book, size: 16, color: Colors.grey.shade600),
                       const SizedBox(width: 6),

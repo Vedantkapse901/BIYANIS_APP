@@ -293,7 +293,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Text('Student ID: ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      const Text('Serial ID: ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                       Text(_foundStudent?['serial_id'] ?? 'N/A', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2)),
                     ],
                   ),

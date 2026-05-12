@@ -1,0 +1,24 @@
+-- ICSE 10 Teachers Upload Script
+-- Run this in the Supabase SQL Editor
+
+INSERT INTO teachers (username, batch, subject, pin, name)
+VALUES
+  ('icse10_ca', 'ICSE 10', 'CA', 'teacher@1234', 'ICSE 10 CA'),
+  ('icse10_literature', 'ICSE 10', 'LITERATURE', 'teacher@1234', 'ICSE 10 LITERATURE'),
+  ('icse10_biology', 'ICSE 10', 'BIOLOGY', 'teacher@1234', 'ICSE 10 BIOLOGY'),
+  ('icse10_physics', 'ICSE 10', 'PHYSICS', 'teacher@1234', 'ICSE 10 PHYSICS'),
+  ('icse10_maths', 'ICSE 10', 'MATHS', 'teacher@1234', 'ICSE 10 MATHS'),
+  ('icse10_cs', 'ICSE 10', 'CS', 'teacher@1234', 'ICSE 10 CS'),
+  ('icse10_civics', 'ICSE 10', 'CIVICS', 'teacher@1234', 'ICSE 10 CIVICS'),
+  ('icse10_hindi', 'ICSE 10', 'HINDI', 'teacher@1234', 'ICSE 10 HINDI'),
+  ('icse10_economic', 'ICSE 10', 'ECONOMIC', 'teacher@1234', 'ICSE 10 ECONOMIC'),
+  ('icse10_language', 'ICSE 10', 'LANGUAGE', 'teacher@1234', 'ICSE 10 LANGUAGE'),
+  ('icse10_geography', 'ICSE 10', 'GEOGRAPHY', 'teacher@1234', 'ICSE 10 GEOGRAPHY'),
+  ('icse10_chemistry', 'ICSE 10', 'CHEMISTRY', 'teacher@1234', 'ICSE 10 CHEMISTRY'),
+  ('icse10_history', 'ICSE 10', 'HISTORY', 'teacher@1234', 'ICSE 10 HISTORY')
+ON CONFLICT (username) DO UPDATE SET
+  name = EXCLUDED.name,
+  pin = EXCLUDED.pin,
+  batch = EXCLUDED.batch,
+  subject = EXCLUDED.subject,
+  updated_at = NOW();
